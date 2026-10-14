@@ -50,16 +50,25 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
 
   const toggleFavorite = useCallback(
     (productId: string) => {
-      setFavorites((prev) => {
-        if (prev.includes(productId)) {
-          showToast("Eliminado de favoritos", "info");
-          return prev.filter((id) => id !== productId);
-        }
-        showToast("Agregado a favoritos", "success");
-        return [...prev, productId];
-      });
+      // Se decide la acción con el estado actual ANTES de actualizar.
+      const isRemoving = favorites.includes(productId);
+
+      // El actualizador permanece puro: solo calcula la nueva lista.
+      // React lo ejecuta durante el render, por lo que showToast (que hace
+      // setState en ToastProvider) no puede invocarse desde aquí.
+      setFavorites((prev) =>
+        prev.includes(productId)
+          ? prev.filter((id) => id !== productId)
+          : [...prev, productId]
+      );
+
+      // Una única notificación por alteración, fuera del render.
+      showToast(
+        isRemoving ? "Eliminado de favoritos" : "Agregado a favoritos",
+        isRemoving ? "info" : "success"
+      );
     },
-    [showToast]
+    [favorites, showToast]
   );
 
   const isFavorite = useCallback(

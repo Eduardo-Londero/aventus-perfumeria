@@ -158,8 +158,8 @@ export default function AdminLayout({
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="lg:pl-64 pt-14 lg:pt-0">
+      {/* Main Content - se reserva el espacio del header público fijo */}
+      <div className="lg:pl-64 pt-20 lg:pt-20">
         <main className="p-4 lg:p-8">{children}</main>
       </div>
     </div>

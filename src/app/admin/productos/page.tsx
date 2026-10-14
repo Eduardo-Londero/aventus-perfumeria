@@ -10,6 +10,7 @@ import {
   dbGenders,
   dbBrands,
   dbOrders,
+  generateProductId,
   Product,
 } from "@/lib/db";
 
@@ -163,15 +164,26 @@ export default function AdminProductosPage() {
   };
 
   const handleSave = (product: Product) => {
-    if (editingProduct) {
-      dbProducts.update(editingProduct.id, product);
-      showToast("Producto actualizado correctamente");
-    } else {
-      dbProducts.create(product);
-      showToast("Producto creado correctamente");
+    try {
+      if (editingProduct) {
+        // Edición: se opera sobre el ID del producto seleccionado, nunca sobre uno nuevo.
+        dbProducts.update(editingProduct.id, product);
+        showToast("Producto actualizado correctamente");
+      } else {
+        // Alta: el formulario no trae ID, se asigna uno único antes de persistir.
+        const id = typeof product.id === "string" && product.id.trim() ? product.id : generateProductId();
+        dbProducts.create({ ...product, id });
+        showToast("Producto creado correctamente");
+      }
+      setProducts(dbProducts.getAll());
+      setIsModalOpen(false);
+    } catch (error) {
+      // dbProducts.create valida ID ausente/duplicado y nunca persiste datos inválidos.
+      showToast(
+        error instanceof Error ? error.message : "No se pudo guardar el producto",
+        "error"
+      );
     }
-    setProducts(dbProducts.getAll());
-    setIsModalOpen(false);
   };
 
   const handleToggleActive = (id: string) => {
@@ -370,7 +382,7 @@ export default function AdminProductosPage() {
                 const brand = dbBrands.getById(product.brand);
                 const gender = dbGenders.getById(product.gender);
                 return (
-                  <tr key={product.id} className="hover:bg-gray-50">
+                  <tr key={product.id || product.slug || product.name} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="relative w-10 h-10 bg-gray-100 rounded overflow-hidden flex-shrink-0">

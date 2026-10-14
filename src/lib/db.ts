@@ -145,6 +145,40 @@ function saveCollection<T>(key: string, data: T[]): void {
 
 const PRODUCTS_KEY = "aventus-db-products";
 
+/**
+ * Genera un ID único para un producto nuevo.
+ *
+ * Los productos existentes usan IDs numéricos en formato string ("1".."20"),
+ * por lo que se conserva esa convención: se parte del máximo numérico actual
+ * y se incrementa hasta encontrar un valor no utilizado.
+ *
+ * Nunca reutiliza un ID existente y no modifica los IDs ya persistidos.
+ */
+export function generateProductId(): string {
+  const products = getCollection<Product>(PRODUCTS_KEY);
+  const used = new Set(products.map((p) => String(p.id)));
+
+  let next = 1;
+  for (const p of products) {
+    const numeric = Number(p.id);
+    if (Number.isFinite(numeric) && numeric >= next) {
+      next = numeric + 1;
+    }
+  }
+
+  // Red de seguridad por si el máximo coincidiera con un ID no numérico ya usado
+  while (used.has(String(next))) {
+    next += 1;
+  }
+
+  return String(next);
+}
+
+/** Devuelve true si el valor es un ID de producto utilizable (string no vacío). */
+function isValidId(id: unknown): id is string {
+  return typeof id === "string" && id.trim().length > 0;
+}
+
 export const dbProducts = {
   getAll(): Product[] {
     return getCollection<Product>(PRODUCTS_KEY);
@@ -197,21 +231,42 @@ export const dbProducts = {
   },
 
   create(product: Product): void {
+    // Validación: nunca persistir un producto sin ID o con un ID duplicado.
+    if (!isValidId(product.id)) {
+      throw new Error(
+        "No se puede guardar el producto: el ID es obligatorio."
+      );
+    }
+
     const products = this.getAll();
+    if (products.some((p) => p.id === product.id)) {
+      throw new Error(
+        `No se puede guardar el producto: ya existe un producto con el ID "${product.id}".`
+      );
+    }
+
     products.push(product);
     saveCollection(PRODUCTS_KEY, products);
   },
 
   update(id: string, updates: Partial<Product>): void {
+    // Si no se solicita un ID válido no se modifica nada (evita tocar registros equivocados).
+    if (!isValidId(id)) return;
+
     const products = this.getAll();
     const index = products.findIndex((p) => p.id === id);
     if (index !== -1) {
-      products[index] = { ...products[index], ...updates };
+      // El ID nunca se reescribe: la edición no puede cambiar el identificador.
+      const { id: _ignoredId, ...safeUpdates } = updates;
+      products[index] = { ...products[index], ...safeUpdates, id };
       saveCollection(PRODUCTS_KEY, products);
     }
   },
 
   delete(id: string): void {
+    // Sin un ID válido no se elimina nada: la baja debe ser explícita y sobre un solo registro.
+    if (!isValidId(id)) return;
+
     const products = this.getAll().filter((p) => p.id !== id);
     saveCollection(PRODUCTS_KEY, products);
   },

@@ -72,6 +72,15 @@ export default function Header() {
     [searchQuery]
   );
 
+  // El panel de administración renderiza su propio header y sidebar.
+  // El header público es `fixed ... z-40` y, al renderizarse también en /admin,
+  // se superponía sobre los controles del panel (p. ej. "+ Agregar producto").
+  // Se omite únicamente en rutas de administración; el header público no cambia
+  // en ninguna otra ruta.
+  if (pathname?.startsWith("/admin")) {
+    return null;
+  }
+
   const headerClasses = [
     "fixed top-0 left-0 right-0 z-40 transition-all duration-500",
     isScrolled || isMobileMenuOpen

@@ -9,116 +9,33 @@
 // Importar productos iniciales para poblar la base de datos
 import { products as initialProducts } from "@/data/products";
 
-// Products
-export interface Product {
-  id: string;
-  slug: string;
-  name: string;
-  brand: string;
-  description: string;
-  longDescription?: string;
-  price: number;
-  previousPrice?: number;
-  discount?: number;
-  images: string[];
-  categories: string[]; // IDs de categorías
-  gender: string; // ID del género
-  size: string;
-  concentration: string;
-  olfactoryFamily: string;
-  notes: {
-    top: string[];
-    heart: string[];
-    base: string[];
-  };
-  stock: number;
-  featured: boolean;
-  isActive: boolean;
-  isOnSale: boolean;
-  isNew: boolean;
-  createdAt: string;
-  soldCount?: number;
-}
+// ============================================================
+// Tipos canónicos — importados desde src/types
+// ============================================================
+import type {
+  Product,
+  Category,
+  Gender,
+  Brand,
+  OrderItemSnapshot,
+  Order,
+  OrderStatus,
+} from "@/types";
 
-export interface Category {
-  id: string;
-  slug: string;
-  name: string;
-  description: string;
-  image: string;
-  isActive: boolean;
-  order: number;
-  parentId?: string;
-}
+// HomepageSection está definido en types/cms.ts
+import type { HomepageSection } from "@/types/cms";
 
-export interface Gender {
-  id: string;
-  name: string;
-  isActive: boolean;
-}
-
-export interface Brand {
-  id: string;
-  slug: string;
-  name: string;
-  description?: string;
-  logo?: string;
-  image?: string;
-  website?: string;
-  isActive: boolean;
-  order: number;
-}
-
-export interface OrderItemSnapshot {
-  productId: string;
-  name: string;
-  brand: string;
-  image: string;
-  size: string;
-  concentration?: string;
-  quantity: number;
-  unitPrice: number;
-  subtotal: number;
-}
-
-export interface HomepageSection {
-  id: string;
-  type: "hero" | "categories" | "featured" | "offers" | "newArrivals" | "banner" | "brands" | "about" | "instagram" | "contact";
-  title: string;
-  isActive: boolean;
-  order: number;
-  content?: Record<string, unknown>;
-}
-
-export type OrderStatus =
-  | "no-concretado"
-  | "confirmado"
-  | "enviado"
-  | "entregado"
-  | "cancelado";
-
-export interface Order {
-  id: string;
-  date: string;
-  customer: {
-    name: string;
-    lastName: string;
-    phone: string;
-    email: string;
-    address?: string;
-    city?: string;
-    postalCode?: string;
-  };
-  items: OrderItemSnapshot[];
-  subtotal: number;
-  shippingCost: number;
-  total: number;
-  deliveryMethod: "retiro" | "envio";
-  paymentMethod: string;
-  status: OrderStatus;
-  statusHistory: { status: OrderStatus; date: string }[];
-  userId?: string;
-}
+// Re-exportar para compatibilidad con consumidores existentes
+export type {
+  Product,
+  Category,
+  Gender,
+  Brand,
+  OrderItemSnapshot,
+  Order,
+  OrderStatus,
+  HomepageSection,
+};
 
 // ============================================================
 // Generic CRUD helpers

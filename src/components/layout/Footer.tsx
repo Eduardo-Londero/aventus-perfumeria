@@ -3,9 +3,9 @@ import { siteConfig, generateWhatsAppUrl } from "@/config/site";
 
 const shopLinks = [
   { href: "/perfumes", label: "Todos los perfumes" },
-  { href: "/perfumes?category=hombre", label: "Perfumes de hombre" },
-  { href: "/perfumes?category=mujer", label: "Perfumes de mujer" },
-  { href: "/perfumes?category=unisex", label: "Perfumes unisex" },
+  { href: "/perfumes?categoria=hombre", label: "Perfumes de hombre" },
+  { href: "/perfumes?categoria=mujer", label: "Perfumes de mujer" },
+  { href: "/perfumes?categoria=unisex", label: "Perfumes unisex" },
   { href: "/ofertas", label: "Ofertas" },
 ];
 

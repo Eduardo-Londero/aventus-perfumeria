@@ -34,7 +34,10 @@ const initialFilters: FilterState = {
 
 export default function PerfumesClient() {
   const searchParams = useSearchParams();
-  const categoriaParam = searchParams.get("categoria");
+  // El parámetro canónico es "categoria". Se acepta "category" como alias legado
+  // para que enlaces antiguos no fallen en silencio mostrando todo el catálogo.
+  const categoriaParam =
+    searchParams.get("categoria") || searchParams.get("category");
 
   const [filters, setFilters] = useState<FilterState>({
     ...initialFilters,

@@ -1,0 +1,79 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-cream-50 text-charcoal-900 font-sans;
+  }
+
+  ::selection {
+    @apply bg-gold-200 text-charcoal-900;
+  }
+}
+
+@layer components {
+  .container-aventus {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Custom scrollbar for independent scroll areas */
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-charcoal-200 rounded-full;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-charcoal-300;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme('colors.charcoal.200') transparent;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-charcoal-900 text-cream-50 text-sm font-medium tracking-widest uppercase hover:bg-charcoal-800 transition-all duration-300;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-8 py-3.5 border border-charcoal-900 text-charcoal-900 text-sm font-medium tracking-widest uppercase hover:bg-charcoal-900 hover:text-cream-50 transition-all duration-300;
+  }
+
+  .btn-gold {
+    @apply inline-flex items-center justify-center gap-2 px-8 py-3.5 bg-gold-600 text-white text-sm font-medium tracking-widest uppercase hover:bg-gold-700 transition-all duration-300;
+  }
+
+  .input-aventus {
+    @apply w-full px-4 py-3 bg-white border border-charcoal-200 text-charcoal-900 placeholder-charcoal-400 focus:outline-none focus:border-gold-500 transition-colors duration-200;
+  }
+
+  .section-title {
+    @apply font-serif text-3xl sm:text-4xl lg:text-5xl text-charcoal-900 tracking-tight;
+  }
+
+  .section-subtitle {
+    @apply text-sm font-medium tracking-widest2 uppercase text-gold-600;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}

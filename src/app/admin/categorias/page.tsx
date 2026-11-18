@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import { useToast } from "@/context/ToastContext";
 import { dbCategories, dbProducts, Category } from "@/lib/db";
+import { useCatalogSync } from "@/hooks/useCatalogSync";
+import ImageField from "@/components/ui/ImageField";
 
 export default function AdminCategoriasPage() {
   const { showToast } = useToast();
@@ -12,9 +14,7 @@ export default function AdminCategoriasPage() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [newName, setNewName] = useState("");
 
-  useEffect(() => {
-    setCategories(dbCategories.getAll());
-  }, []);
+  useCatalogSync(() => setCategories(dbCategories.getAll()));
 
   const handleCreate = () => {
     if (!newName.trim()) {
@@ -153,15 +153,16 @@ export default function AdminCategoriasPage() {
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
               />
-              <input
-                type="url"
+              <ImageField
+                label="Imagen de la categoría"
                 value={editingCategory.image || ""}
-                onChange={(e) => setEditingCategory({ ...editingCategory, image: e.target.value })}
-                placeholder="URL de imagen"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
+                onChange={(v) => setEditingCategory({ ...editingCategory, image: v })}
+                recommended={{ width: 1280, height: 960 }}
+                maxWidth={1280}
+                hint="Ocupa el ancho de la tarjeta en la portada con relación 4:3."
               />
               <p className="text-xs text-gray-500">
-                Recomendado: 800 × 1000 px, JPG/WebP, relación 4:5
+                Consejo: dejá aire arriba y abajo, la tarjeta recorta a 4:3.
               </p>
             </div>
             <div className="flex justify-end gap-3 mt-4">

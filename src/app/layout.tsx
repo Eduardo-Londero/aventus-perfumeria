@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 
-export const dynamic = "force-dynamic";
 import { Cormorant_Garamond, Inter } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers";

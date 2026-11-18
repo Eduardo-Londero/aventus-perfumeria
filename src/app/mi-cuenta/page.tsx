@@ -1,12 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
-import { formatPrice } from "@/config/site";
-import { products } from "@/data/products";
 
 type Tab = "datos" | "direccion" | "pedidos" | "favoritos" | "seguridad";
 
@@ -35,6 +33,26 @@ export default function MiCuentaPage() {
     newPassword: "",
     confirmPassword: "",
   });
+
+  // El perfil llega asíncrono (Supabase Auth + tabla profiles): los
+  // useState de arriba corrieron con user=null, así que al resolverse la
+  // sesión se pueblan los forms. El disparador es el ID (cambia solo al
+  // iniciar o cambiar de cuenta): una actualización de perfil posterior no
+  // pisa lo que el usuario esté escribiendo.
+  useEffect(() => {
+    if (!user) return;
+    setProfileForm({
+      name: user.name || "",
+      lastName: user.lastName || "",
+      phone: user.phone || "",
+    });
+    setAddressForm({
+      address: user.address || "",
+      city: user.city || "",
+      postalCode: user.postalCode || "",
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Redirect if not authenticated
   if (!isLoading && !isAuthenticated) {
@@ -115,33 +133,6 @@ export default function MiCuentaPage() {
       icon: "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z",
     },
   ];
-
-  // Mock orders for demo
-  const mockOrders = [
-    {
-      id: "AV-001",
-      date: "2024-03-15",
-      status: "entregado",
-      total: 145000,
-      items: [{ name: "Sauvage", quantity: 1 }],
-    },
-    {
-      id: "AV-002",
-      date: "2024-03-10",
-      status: "enviado",
-      total: 270000,
-      items: [{ name: "Good Girl", quantity: 2 }],
-    },
-  ];
-
-  const statusColors: Record<string, string> = {
-    pendiente: "bg-yellow-100 text-yellow-700",
-    confirmado: "bg-blue-100 text-blue-700",
-    preparando: "bg-purple-100 text-purple-700",
-    enviado: "bg-indigo-100 text-indigo-700",
-    entregado: "bg-green-100 text-green-700",
-    cancelado: "bg-red-100 text-red-700",
-  };
 
   return (
     <div className="min-h-screen bg-cream-50">
@@ -359,77 +350,6 @@ export default function MiCuentaPage() {
                     Guardar dirección
                   </button>
                 </div>
-              </div>
-            )}
-
-            {/* Pedidos */}
-            {activeTab === "pedidos" && (
-              <div className="bg-white border border-charcoal-100 rounded-lg p-8">
-                <h2 className="font-serif text-xl text-charcoal-900 mb-6">
-                  Mis pedidos
-                </h2>
-                {mockOrders.length === 0 ? (
-                  <div className="text-center py-12">
-                    <svg
-                      className="w-12 h-12 text-charcoal-200 mx-auto mb-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1}
-                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                      />
-                    </svg>
-                    <p className="text-charcoal-500">
-                      Todavía no tenés pedidos
-                    </p>
-                    <Link href="/perfumes" className="btn-primary mt-4 inline-block">
-                      Explorar perfumes
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {mockOrders.map((order) => (
-                      <div
-                        key={order.id}
-                        className="border border-charcoal-100 rounded-lg p-4"
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <p className="font-medium text-charcoal-900">
-                              Pedido {order.id}
-                            </p>
-                            <p className="text-sm text-charcoal-500">
-                              {new Date(order.date).toLocaleDateString("es-AR")}
-                            </p>
-                          </div>
-                          <span
-                            className={`px-3 py-1 text-xs font-medium rounded-full ${statusColors[order.status]}`}
-                          >
-                            {order.status.charAt(0).toUpperCase() +
-                              order.status.slice(1)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="text-charcoal-600">
-                            {order.items.map((item, i) => (
-                              <span key={i}>
-                                {item.name} x{item.quantity}
-                                {i < order.items.length - 1 && ", "}
-                              </span>
-                            ))}
-                          </div>
-                          <p className="font-medium text-charcoal-900">
-                            {formatPrice(order.total)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
 

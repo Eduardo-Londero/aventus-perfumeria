@@ -1,9 +1,19 @@
 /**
- * Capa de datos local (localStorage)
- * ==================================
- * Actúa como base de datos del sistema.
- * Toda la información se persiste en localStorage.
- * En producción se reemplazaría por una API real.
+ * Capa de datos de la tienda
+ * ==========================
+ * Actúa como base de datos del sistema con una interfaz SÍNCRONA idéntica en
+ * ambos backends (feature flag `NEXT_PUBLIC_DATA_BACKEND`):
+ *
+ *   - `localStorage` (POR DEFECTO): comportamiento histórico, byte a byte.
+ *   - `supabase`: lectura hidratada desde el proyecto Remoto (Fase C-1) y
+ *     escritura de catálogo vía `/api/data/*` con write-through optimista
+ *     (Fase C-2). Los PEDIDOS no pasan por esta API síncrona en remoto: se
+ *     crean/leen con src/lib/ordersRemote.ts (RPC `create_order_atomic` +
+ *     /api/admin/orders). Las secciones del home siguen pendientes (Fase D).
+ *
+ * Toda la lógica de este archivo (CRUD, validaciones, máquina de estados,
+ * stock) es la MISMA en ambos backends: lo único que cambia es dónde se
+ * persiste, que decide src/lib/dbDriver.ts.
  */
 
 // Importar productos iniciales para poblar la base de datos
@@ -25,6 +35,18 @@ import type {
 // HomepageSection está definido en types/cms.ts
 import type { HomepageSection } from "@/types/cms";
 
+// Reglas de negocio aplicadas por la propia capa de datos (una sola fuente de verdad)
+import { applyStatusTransition } from "@/lib/orderStatus";
+import { releaseStock, reserveStock } from "@/lib/inventory";
+
+// Feature flag de backend: el driver (localStorage | supabase) decide DÓNDE
+// se persiste. Toda la lógica de este archivo (CRUD, validaciones, máquina de
+// estados, stock) es idéntica en ambos backends: la interfaz pública NO cambia.
+import { IS_SUPABASE_BACKEND, DATA_BACKEND, type DataBackend } from "@/lib/dataBackend";
+import { getDriver } from "@/lib/dbDriver";
+import { enqueueWrite, type WriteKind } from "@/lib/dataSync";
+import type { CatalogEntity } from "@/lib/catalogEntities";
+
 // Re-exportar para compatibilidad con consumidores existentes
 export type {
   Product,
@@ -42,18 +64,138 @@ export type {
 // ============================================================
 
 function getCollection<T>(key: string): T[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const data = localStorage.getItem(key);
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
+  return getDriver().get<T>(key);
 }
 
 function saveCollection<T>(key: string, data: T[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(data));
+  getDriver().set<T>(key, data);
+}
+
+/**
+ * Backend efectivo de este build ("localStorage" por defecto).
+ * Expuesto para diagnóstico (admin/tests/informes).
+ */
+export function getDataBackend(): DataBackend {
+  return DATA_BACKEND;
+}
+
+/**
+ * Resuelve cuando la capa de datos puede servir datos reales:
+ * - localStorage: ya (resuelta de inmediato).
+ * - supabase: al terminar la hidratación del catálogo (o al degradar, en
+ *   cuyo caso el error queda en driver.getLastError()).
+ * Uso recomendado en los efectos de arranque de React:
+ *   whenReady().then(() => setX(dbX.getAll()));
+ */
+export function whenReady(): Promise<void> {
+  return getDriver().whenReady();
+}
+
+/**
+ * Ejecuta `fn` cuando el backend pueda servir datos reales. Con el backend
+ * por defecto (localStorage) NO hace nada: los consumidores pueden dejar la
+ * línea escrita sin cambiar el comportamiento actual.
+ *
+ * Uso típico en efectos de arranque (las lecturas iniciales de React son
+ * síncronas y en supabase la hidratación es async):
+ *   useEffect(() => {
+ *     setProducts(dbProducts.getAll());
+ *     return onBackendReady(() => setProducts(dbProducts.getAll()));
+ *   }, []);
+ *
+ * Devuelve una función de limpieza idempotente (segura de devolver desde un
+ * efecto de React). Con el backend por defecto devuelve un no-op.
+ */
+export function onBackendReady(fn: () => void): () => void {
+  if (!IS_SUPABASE_BACKEND) return () => {};
+  let cancelled = false;
+  void whenReady().then(() => {
+    if (!cancelled) fn();
+  });
+  return () => {
+    cancelled = true;
+  };
+}
+
+/**
+ * Guarda de las escrituras AÚN no migradas a esta API síncrona:
+ *   - pedidos  → en supabase van por src/lib/ordersRemote.ts (RPC + API
+ *                 admin); esta API síncrona no puede esperar la red
+ *   - home/CMS → Fase D (el esquema 0001 no tiene tabla de secciones)
+ *
+ * El catálogo (productos, categorías, marcas y géneros) YA escribe en remoto:
+ * ver `writeThrough` más abajo. El flag por defecto (localStorage) no se ve
+ * afectado por ninguna de las dos rutas.
+ */
+function guardWrite(operation: string): void {
+  if (IS_SUPABASE_BACKEND) {
+    throw new Error(
+      `[data-backend=supabase] ${operation} todavía no está disponible en la ` +
+        `API síncrona: en el backend remoto los pedidos se manejan con ` +
+        `src/lib/ordersRemote.ts (RPC create_order_atomic y /api/admin/orders) ` +
+        `y las secciones del home siguen pendientes (Fase D: sin tabla en el ` +
+        `esquema 0001). El catálogo sí escribe desde la Fase C-2.`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Escritura de catálogo con write-through (Fase C-2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Aplica el cambio en memoria (optimista, tal como hasta ahora) y, SOLO con el
+ * backend `supabase`, lo encola hacia `/api/data/{entity}`.
+ *
+ * Si el servidor lo rechaza se restaura la fila afectada (rollback) y
+ * `dataSync` notifica: la UI relee y muestra el mensaje del servidor. La
+ * interfaz pública sigue siendo síncrona; lo remoto ocurre en segundo plano
+ * y en orden (cola serial de dataSync).
+ *
+ * Con `localStorage` esto reduce a `apply()` exactamente: un solo punto de
+ * corte de escrituras.
+ */
+function writeThrough<T extends { id: string }>(
+  entity: CatalogEntity,
+  key: string,
+  kind: WriteKind,
+  id: string,
+  previous: T | undefined,
+  apply: () => void
+): void {
+  apply();
+  if (!IS_SUPABASE_BACKEND) return;
+  // Borrado de algo que ya no existía: nada que enviar (mismo no-op local).
+  if (kind === "delete" && previous === undefined) return;
+
+  // Se lee DESPUÉS de aplicar: refleja el estado final que queremos persistir.
+  const row = getCollection<T>(key).find((item) => item.id === id);
+  if (kind !== "delete" && !row) return;
+
+  enqueueWrite({ entity, kind, id, payload: row }, () => {
+    restoreItem(key, id, previous);
+  });
+}
+
+/**
+ * Rollback quirúrgico de UNA fila: no reemplaza la colección entera, así que
+ * no pisa altas o ediciones posteriores que ya se hayan aplicado en memoria.
+ */
+function restoreItem<T extends { id: string }>(
+  key: string,
+  id: string,
+  previous: T | undefined
+): void {
+  const items = getCollection<T>(key);
+  const index = items.findIndex((item) => item.id === id);
+  if (previous === undefined) {
+    if (index !== -1) items.splice(index, 1);
+  } else if (index !== -1) {
+    items[index] = previous;
+  } else {
+    items.push(previous);
+  }
+  saveCollection(key, items);
 }
 
 // ============================================================
@@ -162,8 +304,17 @@ export const dbProducts = {
       );
     }
 
-    products.push(product);
-    saveCollection(PRODUCTS_KEY, products);
+    writeThrough<Product>(
+      "products",
+      PRODUCTS_KEY,
+      "create",
+      product.id,
+      undefined,
+      () => {
+        products.push(product);
+        saveCollection(PRODUCTS_KEY, products);
+      }
+    );
   },
 
   update(id: string, updates: Partial<Product>): void {
@@ -175,8 +326,18 @@ export const dbProducts = {
     if (index !== -1) {
       // El ID nunca se reescribe: la edición no puede cambiar el identificador.
       const { id: _ignoredId, ...safeUpdates } = updates;
-      products[index] = { ...products[index], ...safeUpdates, id };
-      saveCollection(PRODUCTS_KEY, products);
+      const previous = products[index];
+      writeThrough<Product>(
+        "products",
+        PRODUCTS_KEY,
+        "update",
+        id,
+        previous,
+        () => {
+          products[index] = { ...products[index], ...safeUpdates, id };
+          saveCollection(PRODUCTS_KEY, products);
+        }
+      );
     }
   },
 
@@ -184,8 +345,18 @@ export const dbProducts = {
     // Sin un ID válido no se elimina nada: la baja debe ser explícita y sobre un solo registro.
     if (!isValidId(id)) return;
 
-    const products = this.getAll().filter((p) => p.id !== id);
-    saveCollection(PRODUCTS_KEY, products);
+    const products = this.getAll();
+    const previous = products.find((p) => p.id === id);
+    writeThrough<Product>(
+      "products",
+      PRODUCTS_KEY,
+      "delete",
+      id,
+      previous,
+      () => {
+        saveCollection(PRODUCTS_KEY, products.filter((p) => p.id !== id));
+      }
+    );
   },
 
   generateSlug(name: string): string {
@@ -217,22 +388,53 @@ export const dbCategories = {
 
   create(category: Category): void {
     const categories = this.getAll();
-    categories.push(category);
-    saveCollection(CATEGORIES_KEY, categories);
+    writeThrough<Category>(
+      "categories",
+      CATEGORIES_KEY,
+      "create",
+      category.id,
+      undefined,
+      () => {
+        categories.push(category);
+        saveCollection(CATEGORIES_KEY, categories);
+      }
+    );
   },
 
   update(id: string, updates: Partial<Category>): void {
     const categories = this.getAll();
     const index = categories.findIndex((c) => c.id === id);
     if (index !== -1) {
-      categories[index] = { ...categories[index], ...updates };
-      saveCollection(CATEGORIES_KEY, categories);
+      // El ID nunca se reescribe (igual que en productos).
+      const { id: _ignoredId, ...safeUpdates } = updates;
+      const previous = categories[index];
+      writeThrough<Category>(
+        "categories",
+        CATEGORIES_KEY,
+        "update",
+        id,
+        previous,
+        () => {
+          categories[index] = { ...categories[index], ...safeUpdates, id };
+          saveCollection(CATEGORIES_KEY, categories);
+        }
+      );
     }
   },
 
   delete(id: string): void {
-    const categories = this.getAll().filter((c) => c.id !== id);
-    saveCollection(CATEGORIES_KEY, categories);
+    const categories = this.getAll();
+    const previous = categories.find((c) => c.id === id);
+    writeThrough<Category>(
+      "categories",
+      CATEGORIES_KEY,
+      "delete",
+      id,
+      previous,
+      () => {
+        saveCollection(CATEGORIES_KEY, categories.filter((c) => c.id !== id));
+      }
+    );
   },
 
   getProductCount(categoryId: string): number {
@@ -268,22 +470,45 @@ export const dbGenders = {
 
   create(gender: Gender): void {
     const genders = this.getAll();
-    genders.push(gender);
-    saveCollection(GENDERS_KEY, genders);
+    writeThrough<Gender>(
+      "genders",
+      GENDERS_KEY,
+      "create",
+      gender.id,
+      undefined,
+      () => {
+        genders.push(gender);
+        saveCollection(GENDERS_KEY, genders);
+      }
+    );
   },
 
   update(id: string, updates: Partial<Gender>): void {
     const genders = this.getAll();
     const index = genders.findIndex((g) => g.id === id);
     if (index !== -1) {
-      genders[index] = { ...genders[index], ...updates };
-      saveCollection(GENDERS_KEY, genders);
+      const { id: _ignoredId, ...safeUpdates } = updates;
+      const previous = genders[index];
+      writeThrough<Gender>(
+        "genders",
+        GENDERS_KEY,
+        "update",
+        id,
+        previous,
+        () => {
+          genders[index] = { ...genders[index], ...safeUpdates, id };
+          saveCollection(GENDERS_KEY, genders);
+        }
+      );
     }
   },
 
   delete(id: string): void {
-    const genders = this.getAll().filter((g) => g.id !== id);
-    saveCollection(GENDERS_KEY, genders);
+    const genders = this.getAll();
+    const previous = genders.find((g) => g.id === id);
+    writeThrough<Gender>("genders", GENDERS_KEY, "delete", id, previous, () => {
+      saveCollection(GENDERS_KEY, genders.filter((g) => g.id !== id));
+    });
   },
 
   getProductCount(genderId: string): number {
@@ -316,22 +541,31 @@ export const dbBrands = {
 
   create(brand: Brand): void {
     const brands = this.getAll();
-    brands.push(brand);
-    saveCollection(BRANDS_KEY, brands);
+    writeThrough<Brand>("brands", BRANDS_KEY, "create", brand.id, undefined, () => {
+      brands.push(brand);
+      saveCollection(BRANDS_KEY, brands);
+    });
   },
 
   update(id: string, updates: Partial<Brand>): void {
     const brands = this.getAll();
     const index = brands.findIndex((b) => b.id === id);
     if (index !== -1) {
-      brands[index] = { ...brands[index], ...updates };
-      saveCollection(BRANDS_KEY, brands);
+      const { id: _ignoredId, ...safeUpdates } = updates;
+      const previous = brands[index];
+      writeThrough<Brand>("brands", BRANDS_KEY, "update", id, previous, () => {
+        brands[index] = { ...brands[index], ...safeUpdates, id };
+        saveCollection(BRANDS_KEY, brands);
+      });
     }
   },
 
   delete(id: string): void {
-    const brands = this.getAll().filter((b) => b.id !== id);
-    saveCollection(BRANDS_KEY, brands);
+    const brands = this.getAll();
+    const previous = brands.find((b) => b.id === id);
+    writeThrough<Brand>("brands", BRANDS_KEY, "delete", id, previous, () => {
+      saveCollection(BRANDS_KEY, brands.filter((b) => b.id !== id));
+    });
   },
 
   getProductCount(brandId: string): number {
@@ -352,6 +586,21 @@ export const dbBrands = {
 
 const ORDERS_KEY = "aventus-db-orders";
 
+/**
+ * Refleja en el catálogo en memoria la reserva de stock que la RPC
+ * `create_order_atomic` YA aplicó en la base remota (solo backend
+ * `supabase`). Así el carrito no ofrece unidades recién compradas hasta el
+ * próximo arranque; el servidor sigue siendo la autoridad (si el espejo se
+ * desincroniza, la RPC rechaza con "Stock insuficiente").
+ *
+ * No-op en localStorage: ahí la reserva la hace `dbOrders.create`.
+ */
+export function mirrorStockReserve(items: OrderItemSnapshot[]): void {
+  if (!IS_SUPABASE_BACKEND || items.length === 0) return;
+  const { products } = reserveStock(dbProducts.getAll(), items);
+  saveCollection(PRODUCTS_KEY, products);
+}
+
 export const dbOrders = {
   getAll(): Order[] {
     return getCollection<Order>(ORDERS_KEY);
@@ -366,12 +615,38 @@ export const dbOrders = {
   },
 
   create(order: Order): void {
+    guardWrite("dbOrders.create");
+    // Validación: nunca persistir un pedido sin ID o con un ID duplicado.
+    if (!isValidId(order.id)) {
+      throw new Error("No se puede guardar el pedido: el ID es obligatorio.");
+    }
+
     const orders = this.getAll();
-    orders.push(order);
+    if (orders.some((o) => o.id === order.id)) {
+      throw new Error(
+        `No se puede guardar el pedido: ya existe un pedido con el ID "${order.id}".`
+      );
+    }
+
+    // Reserva de stock (integridad de inventario): al crear el pedido se
+    // descuentan las unidades del catálogo y se acumulan las ventas UNA sola
+    // vez. `stockReserved: false` permite importar pedidos históricos sin
+    // tocar el inventario; el resto queda marcado como `true` para que la
+    // cancelación sepa que debe liberar exactamente esa reserva.
+    const shouldReserve = order.stockReserved !== false;
+    if (shouldReserve) {
+      // Nota: si un producto del pedido fue dado de baja del catálogo, se omite.
+      const { products } = reserveStock(dbProducts.getAll(), order.items);
+      saveCollection(PRODUCTS_KEY, products);
+    }
+
+    const persisted: Order = { ...order, stockReserved: shouldReserve };
+    orders.push(persisted);
     saveCollection(ORDERS_KEY, orders);
   },
 
   update(id: string, updates: Partial<Order>): void {
+    guardWrite("dbOrders.update");
     const orders = this.getAll();
     const index = orders.findIndex((o) => o.id === id);
     if (index !== -1) {
@@ -380,19 +655,48 @@ export const dbOrders = {
     }
   },
 
-  updateStatus(id: string, status: OrderStatus): void {
+  /**
+   * Aplica un cambio de estado validado por la máquina de estados
+   * (src/lib/orderStatus.ts). Devuelve `false` cuando el pedido no existe o la
+   * transición no está permitida: en ese caso NO se persiste nada.
+   * Al cancelar, libera la reserva de stock exactamente una vez.
+   */
+  updateStatus(id: string, status: OrderStatus): boolean {
+    guardWrite("dbOrders.updateStatus");
     const orders = this.getAll();
     const index = orders.findIndex((o) => o.id === id);
-    if (index !== -1) {
-      orders[index].status = status;
-      orders[index].statusHistory.push({ status, date: new Date().toISOString() });
-      saveCollection(ORDERS_KEY, orders);
+    if (index === -1) return false;
+
+    const stored = orders[index];
+    // Defensa ante datos legados sin historial: se normaliza antes de transicionar.
+    const current: Order = Array.isArray(stored.statusHistory)
+      ? stored
+      : { ...stored, statusHistory: [] };
+
+    const updated = applyStatusTransition(current, status);
+    if (!updated) return false;
+
+    if (status === "cancelado" && current.stockReserved === true) {
+      // Liberación de la reserva (solo pedidos creados con reserva; los
+      // antiguos, sin el flag, nunca descontaron stock).
+      const { products } = releaseStock(dbProducts.getAll(), current.items);
+      saveCollection(PRODUCTS_KEY, products);
+      updated.stockReserved = false;
     }
+
+    orders[index] = updated;
+    saveCollection(ORDERS_KEY, orders);
+    return true;
   },
 
   generateOrderNumber(): string {
     const orders = this.getAll();
-    const nextNumber = 1048 + orders.length;
+    // Evita colisiones si algún pedido hubiese sido eliminado del storage.
+    const existing = new Set(orders.map((o) => o.id));
+    let nextNumber = 1048 + orders.length;
+    while (existing.has(`AV-${nextNumber}`)) {
+      nextNumber += 1;
+    }
     return `AV-${nextNumber}`;
   },
 };
@@ -409,6 +713,7 @@ export const dbHomeSections = {
   },
 
   save(sections: HomepageSection[]): void {
+    guardWrite("dbHomeSections.save");
     saveCollection(HOME_SECTIONS_KEY, sections);
   },
 
@@ -442,6 +747,11 @@ export const dbHomeSections = {
 
 export function initializeDatabase(): void {
   if (typeof window === "undefined") return;
+
+  // Arranque del driver activo: en supabase lanza la hidratación asíncrona
+  // del catálogo (la siembra de abajo es síncrona y entra primero a la
+  // memoria; lo remoto la reemplaza solo si vino con datos — ver dbDriver).
+  getDriver().initialize();
 
   // Initialize genders if empty
   const genders = getCollection<Gender>(GENDERS_KEY);
@@ -626,10 +936,17 @@ export function initializeDatabase(): void {
         isActive: true,
         order: 13,
       },
+      {
+        id: "lancome",
+        slug: "lancome",
+        name: "Lancôme",
+        description: "Elegancia francesa y el icónico aroma de La Vie Est Belle.",
+        image: "https://images.unsplash.com/photo-1587017539504-67cfbddac569?w=800&q=80",
+        isActive: true,
+        order: 14,
+      },
     ]);
   }
-
-  // Initialize products if empty - CARGAR PRODUCTOS REALES
   const products = getCollection<Product>(PRODUCTS_KEY);
   if (products.length === 0) {
     // Guardar productos iniciales en localStorage

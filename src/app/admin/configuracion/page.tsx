@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { siteConfig } from "@/config/site";
 import { useToast } from "@/context/ToastContext";
+import { dbProducts, dbCategories, dbBrands, dbGenders, dbOrders, dbHomeSections, getDataBackend } from "@/lib/db";
+import { buildDump, collectCollections, downloadDump, describeDump } from "@/lib/exportData";
+import type { CartItem } from "@/types";
 
 export default function AdminConfiguracionPage() {
   const { showToast } = useToast();
@@ -37,7 +40,50 @@ export default function AdminConfiguracionPage() {
   });
 
   const handleSave = () => {
-    showToast("Configuración guardada correctamente (demo)");
+    // Persistir la configuración de envíos en localStorage para que el motor
+    // de precios (src/lib/pricing.ts) y el checkout la tomen de inmediato.
+    const free = Number(config.freeShipping);
+    const cost = Number(config.shippingCost);
+    if (!Number.isFinite(free) || free < 0 || !Number.isFinite(cost) || cost < 0) {
+      showToast("Los valores de envío deben ser números válidos y no negativos", "error");
+      return;
+    }
+    try {
+      localStorage.setItem("aventus-shipping-config", JSON.stringify({ freeThreshold: free, defaultCost: cost }));
+    } catch {
+      showToast("No se pudo guardar la configuración", "error");
+      return;
+    }
+    showToast("Configuración de envíos guardada correctamente", "success");
+  };
+
+  /**
+   * Fase D — exportación de respaldo (un clic). El catálogo sale de la capa
+   * db.ts (refleja el backend activo) y el carrito del navegador. El JSON
+   * resultante lo importa scripts/import-to-supabase.mjs (dry-run primero).
+   */
+  const handleExportBackup = () => {
+    try {
+      const dump = buildDump(
+        {
+          products: dbProducts.getAll(),
+          categories: dbCategories.getAll(),
+          brands: dbBrands.getAll(),
+          genders: dbGenders.getAll(),
+          orders: dbOrders.getAll(),
+          homeSections: dbHomeSections.getAll(),
+          cart: collectCollections().cart as CartItem[],
+        },
+        { backend: getDataBackend() }
+      );
+      const filename = downloadDump(dump);
+      showToast(`Respaldo ${filename}: ${describeDump(dump)}`, "success");
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "No se pudo generar el respaldo",
+        "error"
+      );
+    }
   };
 
   return (
@@ -204,6 +250,28 @@ export default function AdminConfiguracionPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
               />
             </div>
+          </div>
+        </div>
+
+        {/* Respaldo de datos (Fase D) */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">Respaldo de datos</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Exporta catálogo, pedidos, home y carrito a un archivo JSON, listo para
+            importarlo a Supabase con el script{" "}
+            <code className="text-xs bg-gray-100 px-1 rounded">scripts/import-to-supabase.mjs</code>.
+            El import primero corre en modo dry-run (sin escribir nada).
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleExportBackup}
+              className="px-6 py-3 bg-gold-600 text-white font-medium rounded-lg hover:bg-gold-700 transition-colors"
+            >
+              Exportar respaldo (JSON)
+            </button>
+            <span className="text-xs text-gray-400">
+              Backend activo: {getDataBackend()}
+            </span>
           </div>
         </div>
 

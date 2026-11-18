@@ -1,19 +1,32 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { dbProducts } from "@/lib/db";
+import { useCatalogSync } from "@/hooks/useCatalogSync";
 import { formatPrice } from "@/config/site";
 import { useAuth } from "@/context/AuthContext";
+import { useOrders } from "@/context/OrdersContext";
+import { computeDashboardMetrics } from "@/lib/metrics";
 
 export default function AdminDashboard() {
   const { user } = useAuth();
   const [products, setProducts] = useState(dbProducts.getAll());
+  const { orders } = useOrders();
 
-  useEffect(() => {
-    setProducts(dbProducts.getAll());
-  }, []);
+  useCatalogSync(() => setProducts(dbProducts.getAll()));
+
+  // KPIs con reglas de negocio únicas (src/lib/metrics.ts):
+  // solo cuentan "confirmado" / "enviado" / "entregado".
+  const metrics = useMemo(
+    () => computeDashboardMetrics(orders, products),
+    [orders, products]
+  );
+  const maxDailyRevenue = Math.max(
+    1,
+    ...metrics.salesByDay.map((day) => day.revenue)
+  );
 
   // Stats calculadas de productos reales desde la base de datos
   const totalProducts = products.length;
@@ -94,6 +107,73 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Sales KPIs — estados que cuentan como venta: confirmado/enviado/entregado */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <p className="text-sm text-gray-500">Ventas confirmadas</p>
+          <p className="text-2xl font-bold text-gray-900">{metrics.confirmedOrders}</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {metrics.cancelledOrders} canceladas · {metrics.pendingOrders} sin confirmar
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <p className="text-sm text-gray-500">Ingresos confirmados</p>
+          <p className="text-2xl font-bold text-emerald-600">
+            {formatPrice(metrics.confirmedRevenue)}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">Excluye pedidos cancelados y pendientes</p>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <p className="text-sm text-gray-500">Ticket promedio</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {formatPrice(metrics.averageTicket)}
+          </p>
+          <p className="text-xs text-gray-400 mt-1">Promedio de ventas confirmadas</p>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <p className="text-sm text-gray-500">Stock bajo</p>
+          <p className="text-2xl font-bold text-amber-600">{metrics.lowStockProducts}</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {metrics.outOfStockProducts} productos agotados
+          </p>
+        </div>
+      </div>
+
+      {/* Evolución de ventas — últimos 7 días */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-8">
+        <div className="flex items-baseline justify-between mb-6">
+          <h3 className="text-lg font-semibold text-gray-900">Evolución de ventas</h3>
+          <span className="text-xs text-gray-400">Últimos 7 días · pedidos confirmados</span>
+        </div>
+        <div className="grid grid-cols-7 gap-3 items-end h-40">
+          {metrics.salesByDay.map((day) => (
+            <div key={day.date} className="flex flex-col items-center justify-end h-full">
+              <span className="text-[10px] text-gray-500 mb-1">
+                {day.revenue > 0 ? formatPrice(day.revenue) : ""}
+              </span>
+              <div
+                className={`w-full rounded-t ${day.revenue > 0 ? "bg-gold-500" : "bg-gray-100"}`}
+                style={{
+                  height: `${Math.max(4, (day.revenue / maxDailyRevenue) * 100)}%`,
+                }}
+                title={`${day.date}: ${day.orders} pedido(s) · ${formatPrice(day.revenue)}`}
+              />
+              <span className="text-[10px] text-gray-400 mt-2">
+                {day.date.slice(8, 10)}/{day.date.slice(5, 7)}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-gray-400 mt-4 text-center">
+          {metrics.confirmedOrders === 0
+            ? "Todavía no hay pedidos confirmados: los indicadores permanecen en cero."
+            : `${metrics.confirmedOrders} venta(s) confirmada(s) en el período total.`}
+        </p>
       </div>
 
       {/* Inventory Value + Best Sellers */}

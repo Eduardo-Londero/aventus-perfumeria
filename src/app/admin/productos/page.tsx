@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import Image from "next/image";
 import { useToast } from "@/context/ToastContext";
 import { formatPrice } from "@/config/site";
@@ -13,6 +13,8 @@ import {
   generateProductId,
   Product,
 } from "@/lib/db";
+import { useCatalogSync } from "@/hooks/useCatalogSync";
+import ImageField from "@/components/ui/ImageField";
 
 type StockFilter = "all" | "out" | "low" | "available" | "high";
 type SortOption = "stock-desc" | "stock-asc" | "name-asc" | "name-desc" | "price-asc" | "price-desc" | "newest";
@@ -32,9 +34,7 @@ export default function AdminProductosPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [offerFilter, setOfferFilter] = useState<string>("all");
 
-  useEffect(() => {
-    setProducts(dbProducts.getAll());
-  }, []);
+  useCatalogSync(() => setProducts(dbProducts.getAll()));
 
   const filteredProducts = useMemo(() => {
     let result = [...products];
@@ -640,9 +640,14 @@ function ProductFormModal({
 
           {/* Image */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Imagen principal</label>
-            <input type="url" value={form.images?.[0] || ""} onChange={(e) => setForm({ ...form, images: [e.target.value, ...(form.images || []).slice(1)] })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500" />
-            <p className="text-xs text-gray-500 mt-1">Recomendado: 1200 × 1200 px, JPG/WebP, fondo blanco</p>
+            <ImageField
+              label="Imagen principal"
+              value={form.images?.[0] || ""}
+              onChange={(v) => setForm({ ...form, images: [v, ...(form.images || []).slice(1)] })}
+              recommended={{ width: 1200, height: 1600 }}
+              maxWidth={1200}
+              hint="Se ve vertical 3:4 en la tarjeta del catálogo y en la ficha del producto. Fondo blanco, producto centrado."
+            />
           </div>
 
           {/* Flags */}

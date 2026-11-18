@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
-  const { login, isLoading, user } = useAuth();
+  const { login, isLoading } = useAuth();
+  const params = useSearchParams();
+  const nextPath = params.get("next");
+  const reason = params.get("reason");
 
   const [form, setForm] = useState({
     email: "",
@@ -38,15 +41,21 @@ export default function LoginPage() {
 
     if (!validate()) return;
 
-    const success = await login(form.email, form.password);
+    const result = await login(form.email, form.password);
 
-    if (success) {
-      // Redirigir según el rol del usuario autenticado
-      const isAdmin = user?.role === "admin";
-      if (isAdmin) {
-        router.push("/admin");
+    if (result.ok) {
+      // Redirigir según el rol efectivamente otorgado por el servidor
+      if (result.role === "admin") {
+        router.push(nextPath && nextPath.startsWith("/admin") ? nextPath : "/admin");
       } else {
-        router.push("/mi-cuenta");
+        // `?next=` solo acepta rutas INTERNAS del sitio (empieza con una
+        // sola barra, sin `//`): permite volver al checkout u otra página
+        // sin abrir una redirección a otro dominio.
+        const safeNext =
+          nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")
+            ? nextPath
+            : null;
+        router.push(safeNext ?? "/mi-cuenta");
       }
     }
   };
@@ -211,12 +220,46 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Demo credentials */}
-        <div className="mt-6 p-4 bg-gold-50 border border-gold-200 rounded-lg">
-          <p className="text-xs text-gold-800 font-medium mb-2">Credenciales de prueba:</p>
-          <p className="text-xs text-gold-700">Admin: admin@aventusperfumeria.com / admin123</p>
-        </div>
+        {/* Aviso cuando el middleware redirigió desde /admin */}
+        {reason && (
+          <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-xs text-amber-800">
+              {reason === "session_expired"
+                ? "Tu sesión de administración expiró. Ingresá nuevamente."
+                : "Ingresá con tu usuario de administración para continuar al panel."}
+            </p>
+          </div>
+        )}
+
+        {/* Aviso tras recuperar la contraseña desde /recuperar-password */}
+        {params.get("reset") === "ok" && (
+          <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-xs text-green-800">
+              Contraseña actualizada. Ingresá con la nueva contraseña.
+            </p>
+          </div>
+        )}
+
+        {/* Aviso de configuración (solo en desarrollo local) */}
+        {process.env.NODE_ENV === "development" && (
+          <div className="mt-4 p-4 bg-cream-100 border border-charcoal-100 rounded-lg">
+            <p className="text-xs text-charcoal-600">
+              El acceso al panel <strong>/admin</strong> requiere definir{" "}
+              <code>ADMIN_EMAIL</code> y <code>ADMIN_PASSWORD</code> en{" "}
+              <code>.env.local</code>. Las credenciales se validan únicamente en
+              el servidor; no se incluyen en el código de la web.
+            </p>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

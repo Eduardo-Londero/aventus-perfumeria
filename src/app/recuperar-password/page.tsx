@@ -1,14 +1,64 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { getSupabase } from "@/lib/supabaseClient";
 
+/**
+ * Recuperar contraseña
+ * ====================
+ * Dos modos:
+ *
+ *  1. "Pedir enlace" (default): llama a Supabase Auth
+ *     (`resetPasswordForEmail`) y muestra la confirmación.
+ *
+ *  2. "Elegir contraseña nueva": se activa solo cuando el usuario abre el
+ *     enlace del email. Supabase envía un token en el fragmento `#...` de la
+ *     URL, el cliente lo intercambia por una sesión de recuperación
+ *     (`detectSessionInUrl` en supabaseClient) y acá se ofrece el form para
+ *     fijar la contraseña nueva vía `auth.updateUser`.
+ */
 export default function RecuperarPasswordPage() {
   const { requestPasswordReset, isLoading } = useAuth();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState("");
+
+  // Modo "recuperación activa" (enlace abierto).
+  const [isRecovery, setIsRecovery] = useState(false);
+  const [isCheckingRecovery, setIsCheckingRecovery] = useState(true);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [recoveryError, setRecoveryError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      const supabase = getSupabase();
+      // getSession() espera la inicialización del cliente, que es la que
+      // procesa el token de recuperación presente en la URL.
+      void supabase.auth
+        .getSession()
+        .then(({ data: { session } }) => {
+          if (cancelled) return;
+          setIsRecovery(!!session?.user);
+          setIsCheckingRecovery(false);
+        })
+        .catch(() => {
+          if (!cancelled) setIsCheckingRecovery(false);
+        });
+    } catch {
+      // Sin claves Supabase en el entorno: solo queda el modo "pedir enlace".
+      if (!cancelled) setIsCheckingRecovery(false);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +79,130 @@ export default function RecuperarPasswordPage() {
       setIsSubmitted(true);
     }
   };
+
+  const handleSavePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoveryError("");
+
+    if (newPassword.length < 6) {
+      setRecoveryError("La contraseña debe tener al menos 6 caracteres");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setRecoveryError("Las contraseñas no coinciden");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const supabase = getSupabase();
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (updateError) {
+        setRecoveryError(
+          updateError.message.includes("same")
+            ? "La contraseña nueva no puede ser igual a la actual."
+            : updateError.message
+        );
+        return;
+      }
+
+      // Cerrar la sesión de recuperación: el usuario entra de nuevo con la
+      // contraseña nueva desde /login.
+      await supabase.auth.signOut().catch(() => undefined);
+      router.push("/login?reset=ok");
+    } catch {
+      setRecoveryError("No se pudo actualizar la contraseña. Intentá nuevamente.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // ---------------------------------------------------------------
+  // Modo 2: sesión de recuperación activa → elegir contraseña nueva
+  // ---------------------------------------------------------------
+  if (isCheckingRecovery) {
+    return (
+      <div className="min-h-screen bg-cream-50 flex items-center justify-center px-4">
+        <p className="text-charcoal-600">Verificando enlace...</p>
+      </div>
+    );
+  }
+
+  if (isRecovery) {
+    return (
+      <div className="min-h-screen bg-cream-50 flex items-center justify-center px-4 py-12">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-8">
+            <Link href="/" className="inline-block">
+              <span className="font-serif text-3xl font-semibold text-charcoal-900">
+                AVENTUS
+              </span>
+              <span className="font-serif text-3xl font-light text-charcoal-900 ml-1">
+                Perfumería
+              </span>
+            </Link>
+          </div>
+
+          <div className="bg-white border border-charcoal-100 rounded-lg p-8">
+            <h1 className="font-serif text-2xl text-charcoal-900 mb-2 text-center">
+              Elegí tu contraseña nueva
+            </h1>
+            <p className="text-charcoal-600 text-center mb-8">
+              Ingresá tu nueva contraseña para completar la recuperación.
+            </p>
+
+            <form onSubmit={handleSavePassword} className="space-y-4">
+              <div>
+                <label className="block text-sm text-charcoal-600 mb-1.5">
+                  Contraseña nueva
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => {
+                    setNewPassword(e.target.value);
+                    setRecoveryError("");
+                  }}
+                  className={`input-aventus ${recoveryError ? "border-red-500" : ""}`}
+                  placeholder="Mínimo 6 caracteres"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-charcoal-600 mb-1.5">
+                  Repetir contraseña
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    setRecoveryError("");
+                  }}
+                  className={`input-aventus ${recoveryError ? "border-red-500" : ""}`}
+                  placeholder="Repetí la contraseña"
+                />
+                {recoveryError && (
+                  <p className="text-xs text-red-500 mt-1">{recoveryError}</p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="w-full btn-gold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSaving ? "Guardando..." : "GUARDAR CONTRASEÑA"}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (isSubmitted) {
     return (

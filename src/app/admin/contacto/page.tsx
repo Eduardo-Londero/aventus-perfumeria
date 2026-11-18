@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { siteConfig } from "@/config/site";
 import { useToast } from "@/context/ToastContext";
+import ImageField from "@/components/ui/ImageField";
 
 export default function AdminContactoPage() {
   const { showToast } = useToast();
@@ -64,16 +65,14 @@ export default function AdminContactoPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Imagen</label>
-              <input
-                type="url"
-                value={content.heroImage}
-                onChange={(e) => setContent({ ...content, heroImage: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">Recomendado: 1920 × 700 px, JPG/WebP</p>
-            </div>
+            <ImageField
+              label="Imagen del hero"
+              value={content.heroImage || ""}
+              onChange={(v) => setContent({ ...content, heroImage: v })}
+              recommended={{ width: 1920, height: 1080 }}
+              maxWidth={1920}
+              hint="Fondo a pantalla completa con el título encima: dejá el centro despejado."
+            />
           </div>
         </div>
 

@@ -9,7 +9,14 @@ import {
   ReactNode,
 } from "react";
 import { Order, OrderStatus, OrderItemSnapshot } from "@/types";
-import { dbOrders } from "@/lib/db";
+import { dbOrders, initializeDatabase } from "@/lib/db";
+import { IS_SUPABASE_BACKEND } from "@/lib/dataBackend";
+import {
+  createRemoteOrder,
+  fetchAllOrdersAdmin,
+  fetchUserRemoteOrders,
+  updateRemoteOrderStatus,
+} from "@/lib/ordersRemote";
 import { useAuth } from "./AuthContext";
 import { useToast } from "./ToastContext";
 
@@ -33,7 +40,7 @@ interface OrdersContextType {
       city?: string;
       postalCode?: string;
     };
-  }) => Order;
+  }) => Promise<Order>;
   updateOrderStatus: (id: string, status: OrderStatus) => void;
   isLoading: boolean;
 }
@@ -43,16 +50,57 @@ const OrdersContext = createContext<OrdersContextType | undefined>(undefined);
 export function OrdersProvider({ children }: { children: ReactNode }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { user } = useAuth();
+  const { user, isAdmin, isLoading: authLoading } = useAuth();
   const { showToast } = useToast();
 
+  // Arranque de la capa de datos (siembra local en el modo histórico).
   useEffect(() => {
-    // Initialize database
-    const { initializeDatabase } = require("@/lib/db");
     initializeDatabase();
-    setOrders(dbOrders.getAll());
-    setIsLoading(false);
+    if (!IS_SUPABASE_BACKEND) {
+      setOrders(dbOrders.getAll());
+      setIsLoading(false);
+    }
+    // En modo supabase la carga real la decide el efecto de "visores"
+    // de abajo: depende de quién esté mirando (cliente vs. panel).
   }, []);
+
+  /**
+   * Fuente de pedidos según quién mira (solo backend `supabase`):
+   *  - admin (cookie del panel) → TODOS los pedidos (/api/admin/orders,
+   *    service_role: el admin no tiene sesión de Supabase Auth);
+   *  - cliente autenticado      → los suyos (RLS orders_owner_read);
+   *  - sin sesión               → ninguno.
+   */
+  const loadOrdersForViewer = useCallback(async (): Promise<Order[]> => {
+    if (!IS_SUPABASE_BACKEND) return dbOrders.getAll();
+    if (isAdmin) return fetchAllOrdersAdmin();
+    if (user) return fetchUserRemoteOrders();
+    return [];
+  }, [isAdmin, user]);
+
+  // Carga remota cuando cambia el visor (o termina la carga del auth).
+  useEffect(() => {
+    if (!IS_SUPABASE_BACKEND || authLoading) return;
+    let cancelled = false;
+    setIsLoading(true);
+    loadOrdersForViewer()
+      .then((list) => {
+        if (!cancelled) setOrders(list);
+      })
+      .catch((error: unknown) => {
+        console.error(
+          "[orders] no se pudieron cargar los pedidos:",
+          error instanceof Error ? error.message : error
+        );
+        if (!cancelled) setOrders([]);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, loadOrdersForViewer]);
 
   const getUserOrders = useCallback(
     (userId: string): Order[] => {
@@ -69,7 +117,7 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
   );
 
   const createOrder = useCallback(
-    (data: {
+    async (data: {
       items: OrderItemSnapshot[];
       subtotal: number;
       shippingCost: number;
@@ -85,7 +133,27 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
         city?: string;
         postalCode?: string;
       };
-    }): Order => {
+    }): Promise<Order> => {
+      // ---------------------------------------------------------------
+      // Backend remoto: el pedido lo crea la RPC en el servidor
+      // (precios, stock y dueño los decide él). Lanza Error con mensaje
+      // apto para el usuario si algo falla.
+      // ---------------------------------------------------------------
+      if (IS_SUPABASE_BACKEND) {
+        const order = await createRemoteOrder({
+          items: data.items,
+          deliveryMethod: data.deliveryMethod,
+          paymentMethod: data.paymentMethod,
+          customer: data.customer,
+        });
+        setOrders((prev) => [order, ...prev.filter((o) => o.id !== order.id)]);
+        showToast(`Pedido ${order.id} creado`, "success");
+        return order;
+      }
+
+      // ---------------------------------------------------------------
+      // localStorage (modo histórico, byte a byte igual que siempre).
+      // ---------------------------------------------------------------
       const orderNumber = dbOrders.generateOrderNumber();
 
       const newOrder: Order = {
@@ -113,11 +181,40 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
 
   const updateOrderStatus = useCallback(
     (id: string, status: OrderStatus) => {
-      dbOrders.updateStatus(id, status);
+      // Remoto: la transición la valida el servidor (misma máquina de
+      // estados); si la rechaza responde 409 y se muestra su mensaje.
+      if (IS_SUPABASE_BACKEND) {
+        void updateRemoteOrderStatus(id, status)
+          .then(() => {
+            showToast(`Estado actualizado a "${status}"`, "success");
+            return loadOrdersForViewer();
+          })
+          .then((list) => setOrders(list))
+          .catch((error: unknown) => {
+            showToast(
+              error instanceof Error
+                ? error.message
+                : `No se pudo aplicar el estado "${status}"`,
+              "error"
+            );
+          });
+        return;
+      }
+
+      // Local: la capa de datos valida la transición; su resultado
+      // determina si corresponde mostrar éxito o error.
+      const applied = dbOrders.updateStatus(id, status);
       setOrders(dbOrders.getAll());
-      showToast(`Estado actualizado a "${status}"`, "success");
+      if (applied) {
+        showToast(`Estado actualizado a "${status}"`, "success");
+      } else {
+        showToast(
+          `No se pudo aplicar el estado "${status}": transición no permitida`,
+          "error"
+        );
+      }
     },
-    [showToast]
+    [showToast, loadOrdersForViewer]
   );
 
   return (

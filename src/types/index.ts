@@ -108,6 +108,16 @@ export interface Order {
   status: OrderStatus;
   statusHistory: { status: OrderStatus; date: string }[];
   userId?: string;
+  /**
+   * Observaciones del admin (transporte, código de seguimiento, etc.).
+   */
+  observations?: string;
+  /**
+   * Indica si este pedido descontó stock al crearse (reserva activa).
+   * Se usa para liberar el inventario exactamente una vez al cancelar:
+   * pedidos antiguos sin este campo nunca reservaron y no lo liberan.
+   */
+  stockReserved?: boolean;
 }
 
 export interface FilterState {

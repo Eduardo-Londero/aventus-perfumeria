@@ -9,6 +9,7 @@ import {
   ReactNode,
 } from "react";
 import { CartItem, Product } from "@/types";
+import { clampQuantity, computeShipping, computeSubtotal } from "@/lib/pricing";
 
 interface CartContextType {
   items: CartItem[];
@@ -42,16 +43,23 @@ function loadCart(): CartItem[] {
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+  // Guarda de hidratación: el carrito persistido solo se ESCRIBE después de
+  // haberse CARGADO desde storage. Sin esta guarda, el primer render escribía
+  // una lista vacía por encima del carrito guardado y podía perderse si el
+  // usuario cerraba la pestaña en ese instante.
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     setItems(loadCart());
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return; // aún no se cargó el carrito guardado
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     }
-  }, [items]);
+  }, [items, hydrated]);
 
   const addToCart = useCallback((product: Product, quantity = 1) => {
     // Verificar stock disponible
@@ -82,7 +90,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const updateQuantity = useCallback((productId: string, quantity: number) => {
     if (quantity < 1) return;
     setItems((prev) =>
-      prev.map((i) => (i.product.id === productId ? { ...i, quantity } : i))
+      prev.map((i) =>
+        i.product.id === productId
+          ? // Nunca se puede superar el stock disponible
+            { ...i, quantity: clampQuantity(quantity, i.product.stock) }
+          : i
+      )
     );
   }, []);
 
@@ -94,11 +107,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const closeCart = useCallback(() => setIsOpen(false), []);
 
   const totalItems = items.reduce((sum, i) => sum + i.quantity, 0);
-  const subtotal = items.reduce(
-    (sum, i) => sum + i.product.price * i.quantity,
-    0
+  // Fuente única de verdad: src/lib/pricing.ts
+  const subtotal = computeSubtotal(
+    items.map((i) => ({ price: i.product.price, quantity: i.quantity }))
   );
-  const shippingCost = subtotal >= 50000 ? 0 : 2500;
+  // Estimación de envío a domicilio; el checkout recalcula según el método elegido.
+  const shippingCost = computeShipping(subtotal, "envio");
   const total = subtotal + shippingCost;
 
   return (

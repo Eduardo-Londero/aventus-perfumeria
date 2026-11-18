@@ -52,7 +52,6 @@ Los pedidos realizados antes de las 14:00 hs se despachan el mismo día.
 
 - Tarjetas de crédito y débito
 - Transferencia bancaria
-- Mercado Pago
 - Efectivo en el local
 
 ⚠️ ${PENDING_NOTE}`,

@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,10 +11,15 @@ import { useToast } from "@/context/ToastContext";
 import { useOrders } from "@/context/OrdersContext";
 import { useAuth } from "@/context/AuthContext";
 import { formatPrice, generateWhatsAppUrl } from "@/config/site";
+import { computeShipping, computeSubtotal, findStockIssues } from "@/lib/pricing";
+import { dbProducts, onBackendReady } from "@/lib/db";
+import { IS_SUPABASE_BACKEND } from "@/lib/dataBackend";
+
+import type { Product } from "@/types";
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, subtotal, shippingCost, total, clearCart } = useCart();
+  const { items, clearCart } = useCart();
   const { showToast } = useToast();
   const { createOrder } = useOrders();
   const { user } = useAuth();
@@ -35,7 +40,73 @@ export default function CheckoutPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
 
+  /**
+   * Con el backend `supabase` el catálogo llega por hidratación async. El
+   * `useMemo` de revalidación de abajo depende de `items`; sin este tick
+   * quedaría congelado con un catálogo vacío y marcaría todo como
+   * "no disponible". Con el backend por defecto el tick no cambia nada.
+   */
+  const [catalogVersion, setCatalogVersion] = useState(0);
+  useEffect(() => onBackendReady(() => setCatalogVersion((v) => v + 1)), []);
+
   const isDelivery = form.deliveryMethod === "envio";
+
+  /**
+   * Revalidación contra la fuente de datos (src/lib/db.ts) en cada render:
+   *  - producto dado de baja o eliminado → bloquea el pedido
+   *  - cantidad superior al stock vigente → bloquea el pedido
+   *  - precio modificado en catálogo → se usa el precio vigente
+   * Así el importe que se registra nunca depende de valores cacheados en el
+   * navegador ni de lo que "crea" el cliente.
+   */
+  const validated = useMemo(() => {
+    // `catalogVersion` solo dispara el recálculo cuando el catálogo remoto
+    // termina de hidratar (con localStorage nunca cambia).
+    void catalogVersion;
+    const rows = items.map((item) => {
+      const current: Product | undefined = dbProducts.getById(item.product.id);
+      const available = current && current.isActive ? current : null;
+      return { item, product: available };
+    });
+
+    const unavailable = rows
+      .filter((row) => !row.product)
+      .map((row) => row.item.product.name);
+
+    const stockIssues = findStockIssues(
+      rows
+        .filter((row) => row.product)
+        .map((row) => ({
+          productId: row.item.product.id,
+          quantity: row.item.quantity,
+          stock: row.product?.stock ?? 0,
+        }))
+    );
+
+    const lines = rows
+      .filter((row) => row.product)
+      .map((row) => ({ item: row.item, product: row.product as Product }));
+
+    const priceChanged = lines.some(
+      (line) => line.product.price !== line.item.product.price
+    );
+
+    const subtotal = computeSubtotal(
+      lines.map((line) => ({
+        price: line.product.price,
+        quantity: line.item.quantity,
+      }))
+    );
+
+    return { lines, unavailable, stockIssues, priceChanged, subtotal };
+  }, [items, catalogVersion]);
+
+  const subtotal = validated.subtotal;
+  const shippingCost = computeShipping(subtotal, form.deliveryMethod);
+  const envioOptionCost = computeShipping(subtotal, "envio");
+  const total = subtotal + shippingCost;
+  const hasBlockingIssues =
+    validated.unavailable.length > 0 || validated.stockIssues.length > 0;
 
   const validate = () => {
     const newErrors: Record<string, string> = {};
@@ -72,41 +143,83 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (hasBlockingIssues) {
+      const names = validated.unavailable.join(", ");
+      showToast(
+        validated.unavailable.length > 0
+          ? `Productos no disponibles: ${names}. Quitilos del carrito para continuar.`
+          : "Hay productos sin stock suficiente. Ajustá las cantidades para continuar.",
+        "error"
+      );
+      return;
+    }
+
+    // Comprar requiere cuenta (el esquema de pedidos exige user_id NOT
+    // NULL y la RPC rechaza invitados): sin sesión se envía al login y,
+    // con el `?next=`, se vuelve acá.
+    if (IS_SUPABASE_BACKEND && !user) {
+      showToast(
+        "Iniciá sesión o creá una cuenta para completar la compra.",
+        "info"
+      );
+      router.push("/login?next=/checkout");
+      return;
+    }
+
     setIsProcessing(true);
 
-    // Crear snapshot de productos para el pedido histórico
-    const orderItems = items.map((item) => ({
-      productId: item.product.id,
-      name: item.product.name,
-      brand: item.product.brand,
-      image: item.product.images[0],
-      size: item.product.size,
-      concentration: item.product.concentration,
+    // Snapshot de productos con los datos VIGENTES del catálogo
+    const orderItems = validated.lines.map(({ item, product }) => ({
+      productId: product.id,
+      name: product.name,
+      brand: product.brand,
+      image: product.images[0],
+      size: product.size,
+      concentration: product.concentration,
       quantity: item.quantity,
-      unitPrice: item.product.price,
-      subtotal: item.product.price * item.quantity,
+      unitPrice: product.price,
+      subtotal: product.price * item.quantity,
     }));
 
-    // Crear el pedido en la base de datos
-    const order = createOrder({
-      items: orderItems,
-      subtotal,
-      shippingCost,
-      total,
-      deliveryMethod: form.deliveryMethod,
-      paymentMethod: form.paymentMethod,
-      customer: {
-        name: form.name,
-        lastName: form.lastName,
-        phone: form.phone,
-        email: form.email,
-        address: form.address,
-        city: form.city,
-        postalCode: form.postalCode,
-      },
-    });
+    if (validated.priceChanged) {
+      showToast("Algunos precios cambiaron: se aplicó el precio vigente.", "info");
+    }
+
+    // Crear el pedido en la base de datos (importes ya revalidados).
+    // Si la capa de datos rechaza la operación (ID duplicado, datos
+    // corruptos, etc.) se informa al usuario y se libera el botón.
+    let order;
+    try {
+      order = await createOrder({
+        items: orderItems,
+        subtotal,
+        shippingCost,
+        total,
+        deliveryMethod: form.deliveryMethod,
+        paymentMethod: form.paymentMethod,
+        customer: {
+          name: form.name,
+          lastName: form.lastName,
+          phone: form.phone,
+          email: form.email,
+          address: form.address,
+          city: form.city,
+          postalCode: form.postalCode,
+        },
+      });
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "No se pudo crear el pedido. Intentá nuevamente.",
+        "error"
+      );
+      setIsProcessing(false);
+      return;
+    }
 
     setOrderId(order.id);
+
     clearCart();
     setIsProcessing(false);
 
@@ -117,9 +230,15 @@ export default function CheckoutPage() {
 
     const whatsappMessage = `Hola, quiero realizar el pedido ${order.id}.
 
+Cliente: ${form.name} ${form.lastName}
+Teléfono: ${form.phone}
+Email: ${form.email}
+
 ${itemsMessage}
 
-Total: ${formatPrice(total)}`;
+Total: ${formatPrice(total)}
+Modalidad: ${form.deliveryMethod === "envio" ? "Envío a domicilio" : "Retiro en local"}
+Pago: ${form.paymentMethod === "transferencia" ? "Transferencia bancaria" : "Efectivo en el local"}`;
 
     // Abrir WhatsApp
     const whatsappUrl = generateWhatsAppUrl(whatsappMessage);
@@ -280,7 +399,7 @@ Total: ${formatPrice(total)}`;
                   <input type="radio" name="deliveryMethod" value="envio" checked={form.deliveryMethod === "envio"} onChange={handleChange} className="accent-gold-600" />
                   <div>
                     <p className="font-medium">Envío</p>
-                    <p className="text-xs text-charcoal-500">{shippingCost === 0 ? "Gratis" : formatPrice(shippingCost)}</p>
+                    <p className="text-xs text-charcoal-500">{envioOptionCost === 0 ? "Gratis" : formatPrice(envioOptionCost)}</p>
                   </div>
                 </label>
               </div>
@@ -297,25 +416,65 @@ Total: ${formatPrice(total)}`;
             </div>
           </div>
 
+          {/* Payment method */}
+            <div className="bg-white border border-charcoal-100 p-6">
+              <h2 className="font-serif text-xl text-charcoal-900 mb-6">Método de pago</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className={`flex items-center gap-3 p-4 border cursor-pointer min-w-0 overflow-hidden ${form.paymentMethod === "transferencia" ? "border-gold-500 bg-gold-50" : "border-charcoal-200"}`}>
+                  <input type="radio" name="paymentMethod" value="transferencia" checked={form.paymentMethod === "transferencia"} onChange={handleChange} className="accent-gold-600 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">Transferencia</p>
+                    <p className="text-xs text-charcoal-500 truncate">Bancaria</p>
+                  </div>
+                </label>
+                <label className={`flex items-center gap-3 p-4 border cursor-pointer min-w-0 overflow-hidden ${form.paymentMethod === "efectivo" ? "border-gold-500 bg-gold-50" : "border-charcoal-200"}`}>
+                  <input type="radio" name="paymentMethod" value="efectivo" checked={form.paymentMethod === "efectivo"} onChange={handleChange} className="accent-gold-600 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">Efectivo</p>
+                    <p className="text-xs text-charcoal-500 truncate">En el local</p>
+                  </div>
+                </label>
+
+              </div>
+            </div>
+
           {/* Summary */}
           <div className="lg:col-span-1">
             <div className="bg-white border border-charcoal-100 p-6 sticky top-28">
               <h2 className="font-serif text-xl text-charcoal-900 mb-6">Resumen</h2>
               <div className="space-y-3 mb-6">
-                {items.map((item) => (
-                  <div key={item.product.id} className="flex gap-3">
+                {validated.lines.map(({ item, product }) => (
+                  <div key={product.id} className="flex gap-3">
                     <div className="relative w-12 h-14 bg-cream-100 flex-shrink-0">
-                      <Image src={item.product.images[0]} alt={item.product.name} fill className="object-cover" sizes="48px" />
+                      <Image src={product.images[0]} alt={product.name} fill className="object-cover" sizes="48px" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs text-gold-600 uppercase">{item.product.brand}</p>
-                      <p className="text-sm font-medium truncate">{item.product.name}</p>
-                      <p className="text-xs text-charcoal-500">{item.product.size} · Cant: {item.quantity}</p>
+                      <p className="text-xs text-gold-600 uppercase">{product.brand}</p>
+                      <p className="text-sm font-medium truncate">{product.name}</p>
+                      <p className="text-xs text-charcoal-500">{product.size} · Cant: {item.quantity}</p>
                     </div>
-                    <p className="text-sm font-medium">{formatPrice(item.product.price * item.quantity)}</p>
+                    <p className="text-sm font-medium">{formatPrice(product.price * item.quantity)}</p>
                   </div>
                 ))}
               </div>
+
+              {/* Bloqueantes: stock o disponibilidad */}
+              {hasBlockingIssues && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-xs text-red-700 space-y-1">
+                  {validated.unavailable.length > 0 && (
+                    <p>
+                      No disponible: {validated.unavailable.join(", ")}
+                      . Quitalos del carrito para continuar.
+                    </p>
+                  )}
+                  {validated.stockIssues.length > 0 && (
+                    <p>
+                      Stock insuficiente en {validated.stockIssues.length}{" "}
+                      {validated.stockIssues.length === 1 ? "producto" : "productos"}: revisá las cantidades.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="space-y-2 pt-4 border-t border-charcoal-100">
                 <div className="flex justify-between text-sm">
                   <span>Subtotal</span>
@@ -332,10 +491,14 @@ Total: ${formatPrice(total)}`;
               </div>
               <button
                 type="submit"
-                disabled={isProcessing}
+                disabled={isProcessing || hasBlockingIssues}
                 className="w-full btn-gold mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isProcessing ? "Generando pedido..." : "GENERAR PEDIDO Y CONFIRMAR POR WHATSAPP"}
+                {isProcessing
+                  ? "Procesando..."
+                  : hasBlockingIssues
+                    ? "REVISÁ EL CARRITO"
+                    : "GENERAR PEDIDO Y CONFIRMAR POR WHATSAPP"}
               </button>
               <p className="text-xs text-charcoal-500 text-center mt-4">
                 Se abrirá WhatsApp para confirmar tu pedido

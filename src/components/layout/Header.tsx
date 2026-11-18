@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useCart } from "@/context/CartContext";
 import { useFavorites } from "@/context/FavoritesContext";
 import { useAuth } from "@/context/AuthContext";
+import { IS_SUPABASE_BACKEND } from "@/lib/dataBackend";
 import { siteConfig, generateWhatsAppUrl } from "@/config/site";
 
 const navLinks = [
@@ -33,6 +34,10 @@ export default function Header() {
   const { favorites } = useFavorites();
   const { isAuthenticated, isAdmin, user } = useAuth();
   const pathname = usePathname();
+  // Ocultar el carrito en páginas de autenticación y checkout
+  const hideCart = ["/login", "/registro", "/recuperar-password", "/checkout"].some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  );
 
   // Detectar scroll para cambiar estilo del header
   useEffect(() => {
@@ -232,8 +237,8 @@ export default function Header() {
                 </Link>
               )}
 
-              {/* Carrito - solo para clientes */}
-              {!isAdmin && (
+              {/* Carrito - solo para clientes autenticados (comprar requiere cuenta) */}
+              {!isAdmin && (IS_SUPABASE_BACKEND ? isAuthenticated : true) && !hideCart && (
                 <button
                   onClick={toggleCart}
                   aria-label={`Carrito (${totalItems} productos)`}
@@ -286,8 +291,8 @@ export default function Header() {
                 </svg>
               </button>
 
-              {/* Carrito Mobile - solo para clientes */}
-              {!isAdmin && (
+              {/* Carrito Mobile - solo para clientes autenticados */}
+              {!isAdmin && (IS_SUPABASE_BACKEND ? isAuthenticated : true) && !hideCart && (
                 <button
                   onClick={toggleCart}
                   aria-label={`Carrito (${totalItems} productos)`}

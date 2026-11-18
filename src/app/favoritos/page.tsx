@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { useFavorites } from "@/context/FavoritesContext";
 import { useCart } from "@/context/CartContext";
 import { useToast } from "@/context/ToastContext";
-import { dbProducts } from "@/lib/db";
+import { dbProducts, onBackendReady } from "@/lib/db";
 import { formatPrice } from "@/config/site";
 import type { Product } from "@/types";
 
@@ -18,12 +18,28 @@ export default function FavoritosPage() {
   const { showToast } = useToast();
   const [isClient, setIsClient] = useState(false);
 
+  /**
+   * Con el backend `supabase` el catálogo llega por hidratación async. Este
+   * tick fuerza un re-render cuando los datos ya están disponibles (con el
+   * backend por defecto no hace nada).
+   */
+  const [catalogVersion, setCatalogVersion] = useState(0);
+
   useEffect(() => {
     setIsClient(true);
+    return onBackendReady(() => setCatalogVersion((v) => v + 1));
   }, []);
 
-  // Obtener productos favoritos desde la base de datos
-  const allProducts = dbProducts.getAll();
+  // Obtener productos favoritos desde la base de datos. Con el backend
+  // `supabase` el catálogo se hidrata de forma asíncrona: `catalogVersion`
+  // dispara la relección cuando los datos llegan (con el backend por defecto
+  // el valor nunca cambia y el efecto es equivalente al anterior).
+  const allProducts = useMemo(() => {
+    // `catalogVersion` dispara la relección cuando llega el catálogo remoto
+    // (con el backend por defecto nunca cambia: se lee en cada render).
+    void catalogVersion;
+    return dbProducts.getAll();
+  }, [catalogVersion]);
   const favoriteProducts = allProducts.filter((p) => favorites.includes(p.id));
 
   const handleAddToCart = (product: Product) => {

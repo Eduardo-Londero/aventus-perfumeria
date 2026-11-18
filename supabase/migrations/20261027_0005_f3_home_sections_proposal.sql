@@ -1,0 +1,26 @@
+-- ============================================================================
+-- F3 — PROPUESTA de tabla home_sections (PREPARADO, NO EJECUTADO)
+-- ============================================================================
+-- NO EJECUTAR. Requiere aprobación del propietario y decisión de alcance.
+-- Solo contiene los campos que REALMENTE existen hoy en HomepageSection
+-- (src/types/cms.ts): id, type, title, isActive, order, content?.
+-- No se inventan campos de imagen/alt/href porque no existen en el modelo.
+-- ============================================================================
+
+-- create table public.home_sections (
+--   id text primary key,
+--   type text not null check (type in ('hero','categories','featured','offers','newArrivals','banner','brands','about','instagram','contact')),
+--   title text not null,
+--   is_active boolean not null default true,
+--   "order" integer not null,
+--   content jsonb,
+--   created_at timestamptz not null default now(),
+--   updated_at timestamptz not null default now()
+-- );
+--
+-- alter table public.home_sections enable row level security;
+-- create policy "home_sections_public_read" on public.home_sections for select to anon, authenticated using (true);
+-- -- escritura solo service_role (sin política para clientes)
+-- grant select on public.home_sections to anon, authenticated;
+-- grant select, insert, update, delete on public.home_sections to service_role;
+-- ============================================================================

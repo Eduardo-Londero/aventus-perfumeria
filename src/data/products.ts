@@ -722,18 +722,21 @@ export const searchProducts = (query: string): Product[] => {
   );
 };
 
-export const filterProducts = (filters: {
-  categories?: string[];
-  brands?: string[];
-  genders?: string[];
-  sizes?: string[];
-  olfactoryFamilies?: string[];
-  onlyOffers?: boolean;
-  onlyNew?: boolean;
-  onlyInStock?: boolean;
-  priceRange?: [number, number];
-}): Product[] => {
-  return products.filter((p) => {
+export const filterProducts = (
+  filters: {
+    categories?: string[];
+    brands?: string[];
+    genders?: string[];
+    sizes?: string[];
+    olfactoryFamilies?: string[];
+    onlyOffers?: boolean;
+    onlyNew?: boolean;
+    onlyInStock?: boolean;
+    priceRange?: [number, number];
+  },
+  source: Product[] = products
+): Product[] => {
+  return source.filter((p) => {
     if (!p.isActive) return false;
     if (filters.categories?.length && !filters.categories.some((c) => p.categories.includes(c)))
       return false;
@@ -780,19 +783,20 @@ export const sortProducts = (
   }
 };
 
-export const getUniqueBrands = (): string[] => {
-  return [...new Set(products.map((p) => p.brand))];
+export const getUniqueBrands = (source: Product[] = products): string[] => {
+  return [...new Set(source.map((p) => p.brand))];
 };
 
-export const getUniqueSizes = (): string[] => {
-  return [...new Set(products.map((p) => p.size))];
+export const getUniqueSizes = (source: Product[] = products): string[] => {
+  return [...new Set(source.map((p) => p.size))];
 };
 
-export const getUniqueOlfactoryFamilies = (): string[] => {
-  return [...new Set(products.map((p) => p.olfactoryFamily))];
+export const getUniqueOlfactoryFamilies = (source: Product[] = products): string[] => {
+  return [...new Set(source.map((p) => p.olfactoryFamily))];
 };
 
-export const getPriceRange = (): [number, number] => {
-  const prices = products.map((p) => p.price);
+export const getPriceRange = (source: Product[] = products): [number, number] => {
+  const prices = source.map((p) => p.price);
+  if (prices.length === 0) return [0, 0];
   return [Math.min(...prices), Math.max(...prices)];
 };

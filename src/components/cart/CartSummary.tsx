@@ -1,7 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import { formatPrice, siteConfig } from "@/config/site";
+import { formatPrice } from "@/config/site";
+import {
+  computeShipping,
+  freeShippingProgress,
+  freeShippingRemaining,
+} from "@/lib/pricing";
 
 interface CartSummaryProps {
   subtotal: number;
@@ -18,18 +23,16 @@ export default function CartSummary({
   itemCount,
   className = "",
 }: CartSummaryProps) {
-  const shippingCost = useMemo(() => {
-    if (subtotal >= siteConfig.shipping.freeThreshold) return 0;
-    return siteConfig.shipping.defaultCost;
-  }, [subtotal]);
+  // Mismo motor que el resto de la tienda (src/lib/pricing.ts)
+  const shippingCost = useMemo(
+    () => computeShipping(subtotal, "envio"),
+    [subtotal]
+  );
 
   const total = subtotal + shippingCost;
 
-  const freeShippingRemaining = siteConfig.shipping.freeThreshold - subtotal;
-  const freeShippingProgress = Math.min(
-    (subtotal / siteConfig.shipping.freeThreshold) * 100,
-    100
-  );
+  const remaining = freeShippingRemaining(subtotal);
+  const progress = freeShippingProgress(subtotal);
 
   return (
     <div className={`bg-cream-100 p-5 space-y-4 ${className}`}>
@@ -40,9 +43,9 @@ export default function CartSummary({
       {/* Barra de progreso envío gratis */}
       {itemCount > 0 && (
         <div className="space-y-2">
-          {freeShippingRemaining > 0 ? (
+          {remaining > 0 ? (
             <p className="text-xs text-charcoal-600">
-              Agregá <span className="font-semibold text-gold-600">{formatPrice(freeShippingRemaining)}</span> más para envío gratis
+              Agregá <span className="font-semibold text-gold-600">{formatPrice(remaining)}</span> más para envío gratis
             </p>
           ) : (
             <p className="text-xs text-emerald-600 font-medium flex items-center gap-1.5">
@@ -66,7 +69,7 @@ export default function CartSummary({
           <div className="h-1.5 bg-cream-200 rounded-full overflow-hidden">
             <div
               className="h-full bg-gold-500 rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${freeShippingProgress}%` }}
+              style={{ width: `${progress}%` }}
             />
           </div>
         </div>

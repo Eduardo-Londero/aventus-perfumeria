@@ -14,7 +14,14 @@ export default function AdminInicioPage() {
     const loaded = dbHomeSections.getAll();
     if (loaded.length === 0) {
       const defaults = dbHomeSections.getDefaultSections();
-      dbHomeSections.save(defaults);
+      try {
+        dbHomeSections.save(defaults);
+      } catch (error) {
+        // Con `NEXT_PUBLIC_DATA_BACKEND=supabase` el CMS del home todavía no
+        // tiene tabla (Fase D): la página queda usable con las secciones en
+        // memoria en lugar de tumbar el panel al montar.
+        console.error("[admin/inicio] no se pudieron persistir las secciones:", error);
+      }
       setSections(defaults);
     } else {
       setSections(loaded);
@@ -59,9 +66,17 @@ export default function AdminInicioPage() {
 
   const handleApplyChanges = () => {
     if (!hasPendingChanges) return;
-    dbHomeSections.save(sections);
-    setHasPendingChanges(false);
-    showToast("Cambios aplicados correctamente", "success");
+    try {
+      dbHomeSections.save(sections);
+      setHasPendingChanges(false);
+      showToast("Cambios aplicados correctamente", "success");
+    } catch (error) {
+      // Backend remoto sin tabla de CMS aún (Fase D): aviso accionable.
+      showToast(
+        error instanceof Error ? error.message : "No se pudieron aplicar los cambios",
+        "error"
+      );
+    }
   };
 
   if (isLoading) {

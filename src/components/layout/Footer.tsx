@@ -12,6 +12,10 @@ const shopLinks = [
 const helpLinks = [
   { href: "/faq", label: "Preguntas frecuentes" },
   { href: "/contacto", label: "Contacto" },
+  { href: "/terminos", label: "Términos y condiciones" },
+  { href: "/privacidad", label: "Privacidad" },
+  { href: "/devoluciones", label: "Cambios y devoluciones" },
+  { href: "/arrepentimiento", label: "Botón de arrepentimiento" },
 ];
 
 /**

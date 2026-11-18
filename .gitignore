@@ -6,6 +6,10 @@
 # testing
 /coverage
 
+# playwright (artefactos de ejecución E2E)
+/test-results/
+/playwright-report/
+
 # next.js
 /.next/
 /out/
@@ -23,10 +27,24 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
 .env*.local
 
 # vercel
 .vercel
+
+# supabase local CLI state (metadatos del proyecto vinculado)
+supabase/.temp/
+
+# artefactos de auditoría/desarrollo (no necesarios para deploy)
+docs/P1.3.*
+docs/INFORME_P1_*
+docs/INFORME_F*
+docs/TRANSICION_SUPABASE.md
+supabase/backups/
+supabase/tests/
+aventus-dump.json
+P1.3.*.md
 
 # typescript
 *.tsbuildinfo

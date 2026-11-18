@@ -17,7 +17,7 @@ export const siteConfig = {
   whatsapp: {
     // Número de WhatsApp con código de país, sin "+" ni espacios
     // Ejemplo: "5491123456789" para Argentina
-    number: "5491123456789",
+    number: "5493412755009",
     message: "Hola Aventus Perfumería, quería hacer una consulta.",
   },
   contact: {
@@ -33,16 +33,38 @@ export const siteConfig = {
 
   // Local físico
   store: {
-    address: "Dirección del local (pendiente de configuración)",
-    city: "Ciudad (pendiente)",
+    branches: [
+      {
+        name: "Sucursal 1",
+        address: "San Martín 629 (Galería Gran Vía, Local 34)",
+        city: "San Miguel de Tucumán",
+        phone: "Teléfono (pendiente)",
+        hours: [
+          { days: "Lunes a Sábado", hours: "9:00 – 21:00 hs (horario corrido)" },
+        ],
+        mapsUrl: "https://maps.google.com/?q=San+Martín+629+San+Miguel+de+Tucumán",
+      },
+      {
+        name: "Sucursal 2",
+        address: "Buenos Aires 61 (Galería Mercado Showroom, Isla 3)",
+        city: "San Miguel de Tucumán",
+        phone: "Teléfono (pendiente)",
+        hours: [
+          { days: "Lunes a Sábado", hours: "9:00 – 13:00 hs y 17:00 – 21:00 hs" },
+        ],
+        mapsUrl: "https://maps.google.com/?q=Buenos+Aires+61+San+Miguel+de+Tucumán",
+      },
+    ],
+    // Compatibilidad con código existente que espera un solo local
+    address: "San Martín 629 (Galería Gran Vía, Local 34) / Buenos Aires 61 (Galería Mercado Showroom, Isla 3)",
+    city: "San Miguel de Tucumán",
     phone: "Teléfono (pendiente)",
     hours: [
-      { days: "Lunes a Viernes", hours: "10:00 – 20:00" },
-      { days: "Sábados", hours: "10:00 – 14:00" },
-      { days: "Domingos", hours: "Cerrado" },
+      { days: "Sucursal 1 — Lunes a Sábado", hours: "9:00 – 21:00 hs" },
+      { days: "Sucursal 2 — Lunes a Sábado", hours: "9:00 – 13:00 y 17:00 – 21:00 hs" },
     ],
     // URL para "Cómo llegar" en Google Maps
-    mapsUrl: "https://maps.google.com/?q=Argentina",
+    mapsUrl: "https://maps.google.com/?q=San+Martín+629+San+Miguel+de+Tucumán",
   },
 
   // Moneda
@@ -54,7 +76,7 @@ export const siteConfig = {
 
   // Envíos
   shipping: {
-    freeThreshold: 50000,
+    freeThreshold: 200000,
     defaultCost: 2500,
     methods: [
       { id: "retiro", name: "Retiro en local", cost: 0 },
@@ -64,7 +86,6 @@ export const siteConfig = {
 
   // Métodos de pago (preparado para futura integración)
   paymentMethods: [
-    { id: "mercadopago", name: "Mercado Pago", enabled: false },
     { id: "transferencia", name: "Transferencia bancaria", enabled: true },
     { id: "efectivo", name: "Efectivo en el local", enabled: true },
   ],

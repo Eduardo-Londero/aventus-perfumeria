@@ -1,0 +1,23 @@
+# Entorno de integración AISLADO para Aventus Perfumería.
+# Uso (solo tras autorización del propietario y con Docker Desktop activo):
+#   docker compose -f docker-compose.integration.yml up -d
+#   psql "postgresql://aventus_test:aventus_test@localhost:54329/aventus_test" -f supabase/tests/integration/00_setup.sql
+# No usar para producción. No contiene secretos reales.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: aventus_test
+      POSTGRES_PASSWORD: aventus_test
+      POSTGRES_DB: aventus_test
+    ports:
+      - "54329:5432"
+    volumes:
+      - aventus_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aventus_test -d aventus_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  aventus_pgdata:

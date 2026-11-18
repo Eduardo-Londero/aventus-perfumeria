@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useToast } from "@/context/ToastContext";
 import { dbGenders, dbProducts, Gender } from "@/lib/db";
+import { useCatalogSync } from "@/hooks/useCatalogSync";
 
 export default function AdminGenerosPage() {
   const { showToast } = useToast();
@@ -11,9 +12,7 @@ export default function AdminGenerosPage() {
   const [editingGender, setEditingGender] = useState<Gender | null>(null);
   const [newName, setNewName] = useState("");
 
-  useEffect(() => {
-    setGenders(dbGenders.getAll());
-  }, []);
+  useCatalogSync(() => setGenders(dbGenders.getAll()));
 
   const handleCreate = () => {
     if (!newName.trim()) {

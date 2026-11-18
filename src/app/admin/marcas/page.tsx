@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import { useToast } from "@/context/ToastContext";
 import { dbBrands, dbProducts, Brand } from "@/lib/db";
+import { useCatalogSync } from "@/hooks/useCatalogSync";
+import ImageField from "@/components/ui/ImageField";
 
 export default function AdminMarcasPage() {
   const { showToast } = useToast();
@@ -12,9 +14,7 @@ export default function AdminMarcasPage() {
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
   const [newName, setNewName] = useState("");
 
-  useEffect(() => {
-    setBrands(dbBrands.getAll());
-  }, []);
+  useCatalogSync(() => setBrands(dbBrands.getAll()));
 
   const handleCreate = () => {
     if (!newName.trim()) {
@@ -148,12 +148,13 @@ export default function AdminMarcasPage() {
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
               />
-              <input
-                type="url"
+              <ImageField
+                label="Imagen de la marca"
                 value={editingBrand.image || ""}
-                onChange={(e) => setEditingBrand({ ...editingBrand, image: e.target.value })}
-                placeholder="URL de imagen"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
+                onChange={(v) => setEditingBrand({ ...editingBrand, image: v })}
+                recommended={{ width: 1280, height: 800 }}
+                maxWidth={1280}
+                hint="Ocupa el ancho de la tarjeta en /marcas con relación 16:10."
               />
             </div>
             <div className="flex justify-end gap-3 mt-4">

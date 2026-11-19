@@ -14,9 +14,14 @@ export const dynamic = "force-dynamic";
  * la URL pública. La base de datos solo guarda la URL (texto), nunca los
  * bytes de la foto: por eso 40.000 imágenes no pesan en la DB.
  *
- * Optimización aplicada (menor espacio posible):
+ * Optimización aplicada:
  *  - se redimensiona al ancho máximo indicado (sin ampliar);
- *  - se convierte a WebP (calidad 80, sin metadatos/EXIF);
+ *  - si se pasa `aspectRatio` ("W:H", ej. "3:4"), la imagen se RECORTA al
+ *    centro a esa proporción ANTES de redimensionar, para que el resultado
+ *    encaje en los contenedores `object-cover` sin cortar el producto;
+ *  - se convierte a AVIF (calidad 80) con fallback a WebP (calidad 80),
+ *    sin metadatos/EXIF. Calidad 80 evita que la foto se vea "medio mal"
+ *    tras la optimización (antes era 50);
  *  - se descartan los canales alfa si el fondo no los necesita.
  *
  * Seguridad: requiere sesión de admin firmada (cookie httpOnly). Tamaño
@@ -131,33 +136,84 @@ export async function POST(req: NextRequest) {
     ? Math.min(Math.max(Math.round(requestedWidth), MIN_MAX_WIDTH), ABSOLUTE_MAX_WIDTH)
     : DEFAULT_MAX_WIDTH;
 
-  // Optimización máxima: redimensiona (sin ampliar) y convierte al formato más
-  // liviano disponible (AVIF → WebP como fallback), sin metadatos/EXIF.
-  // Se genera una sola variante (Next.js se encarga de los tamaños responsive).
+  // Relación de aspecto recomendada (ej. "3:4" para fotos de producto). Si se
+  // indica, la imagen se RECORTA al centro a esa proporción ANTES de
+  // redimensionar, para que el resultado encaje en los contenedores
+  // object-cover sin cortar el producto a la mitad.
+  const rawAspect = form.get("aspectRatio");
+  const aspectRatio =
+    typeof rawAspect === "string" && /^\d+:\d+$/.test(rawAspect.trim())
+      ? rawAspect.trim()
+      : null;
+
+  // Metadatos ORIENTADOS (respeta EXIF) para calcular el recorte correctamente.
+  let metaWidth = 0;
+  let metaHeight = 0;
+  try {
+    const m = await sharp(input, { failOn: "none" }).rotate().metadata();
+    metaWidth = m.width ?? 0;
+    metaHeight = m.height ?? 0;
+  } catch {
+    // Si no se pueden leer los metadatos, se sigue sin recorte (degradación).
+  }
+
+  // ¿Se va a recortar? (solo informativo, para que el cliente pueda avisar).
+  let cropped = false;
+  if (aspectRatio && metaWidth > 0 && metaHeight > 0) {
+    const [rw, rh] = aspectRatio.split(":").map(Number);
+    const target = rw / rh;
+    const src = metaWidth / metaHeight;
+    cropped = Math.abs(src - target) > 0.02;
+  }
+
+  // Pipeline base: rotación + recorte opcional al aspecto pedido + resize.
+  function basePipeline() {
+    let p = sharp(input, { failOn: "none" }).rotate();
+    if (aspectRatio && metaWidth > 0 && metaHeight > 0) {
+      const [rw, rh] = aspectRatio.split(":").map(Number);
+      const target = rw / rh;
+      const src = metaWidth / metaHeight;
+      if (Math.abs(src - target) > 0.02) {
+        let cropW: number;
+        let cropH: number;
+        if (src > target) {
+          cropH = metaHeight;
+          cropW = Math.max(1, Math.round(metaHeight * target));
+        } else {
+          cropW = metaWidth;
+          cropH = Math.max(1, Math.round(metaWidth / target));
+        }
+        const left = Math.max(0, Math.round((metaWidth - cropW) / 2));
+        const top = Math.max(0, Math.round((metaHeight - cropH) / 2));
+        p = p.extract({ left, top, width: cropW, height: cropH });
+      }
+    }
+    return p.resize({ width: maxWidth, withoutEnlargement: true });
+  }
+
+  // Optimización: AVIF (calidad 80) con fallback a WebP (calidad 80).
   let output: Buffer;
   let width: number;
+  let height: number;
   let contentType = "image/webp";
   let ext = "webp";
   try {
-    // Intentar AVIF primero (≈30% más liviano que WebP).
     try {
-      const processed = await sharp(input, { failOn: "none" })
-        .rotate()
-        .resize({ width: maxWidth, withoutEnlargement: true })
-        .avif({ quality: 50, effort: 9 })
+      const processed = await basePipeline()
+        .avif({ quality: 80, effort: 9 })
         .toBuffer({ resolveWithObject: true });
       output = processed.data;
       width = processed.info.width;
+      height = processed.info.height;
       contentType = "image/avif";
       ext = "avif";
     } catch {
-      const processed = await sharp(input, { failOn: "none" })
-        .rotate()
-        .resize({ width: maxWidth, withoutEnlargement: true })
-        .webp({ quality: 50, effort: 6 })
+      const processed = await basePipeline()
+        .webp({ quality: 80, effort: 6 })
         .toBuffer({ resolveWithObject: true });
       output = processed.data;
       width = processed.info.width;
+      height = processed.info.height;
       contentType = "image/webp";
       ext = "webp";
     }
@@ -202,5 +258,7 @@ export async function POST(req: NextRequest) {
     thumbnailUrl: publicUrl,
     bytes: output.length,
     width,
+    height,
+    cropped,
   });
 }

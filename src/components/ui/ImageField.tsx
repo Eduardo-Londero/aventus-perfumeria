@@ -52,6 +52,7 @@ export default function ImageField({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,15 +69,23 @@ export default function ImageField({
       const body = new FormData();
       body.append("file", file);
       body.append("maxWidth", String(maxWidth));
+    if (recommended) {
+      body.append("aspectRatio", `${recommended.width}:${recommended.height}`);
+    }
 
       const res = await fetch("/api/upload", { method: "POST", body });
-      const data = (await res.json()) as { ok?: boolean; url?: string; message?: string };
+      const data = (await res.json()) as { ok?: boolean; url?: string; message?: string; cropped?: boolean };
 
       if (!res.ok || !data.ok || !data.url) {
         throw new Error(data.message || "No se pudo subir la imagen");
       }
 
       onChange(data.url);
+      if (data.cropped) {
+        setNotice("La foto no era del formato recomendado y se recorto al centro para que encaje en la tienda sin cortar el producto.");
+      } else {
+        setNotice(null);
+      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al subir la imagen");
@@ -120,6 +129,7 @@ export default function ImageField({
               onChange(e.target.value);
               setPreview(null);
               setError(null);
+              setNotice(null);
             }}
             placeholder="https://... o /images/archivo.webp"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500"
@@ -149,6 +159,7 @@ export default function ImageField({
           </div>
 
           {error && <p className="text-xs text-red-500">{error}</p>}
+          {notice && <p className="text-xs text-amber-600">{notice}</p>}
 
           {/* Tamaño óptimo para este lugar */}
           {recommended && (

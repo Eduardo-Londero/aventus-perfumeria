@@ -1,7 +1,8 @@
 /**
  * POST /api/data/[entity]  (Fase C-2 / Fase D)
  * ====================================
- * Alta de catálogo (products | categories | brands | genders | home_sections).
+ * Alta de catálogo (products | categories | brands | genders | home_sections
+ * | banners).
  *
  * Orden de las guardas: backend activo → sesión de administrador → entidad →
  * cuerpo → validación/dominio en catalogWriteService. Responde 201 con
@@ -16,9 +17,12 @@ import {
 } from "@/lib/server/adminGuard";
 import { createEntity } from "@/lib/server/catalogWriteService";
 import { replaceHomeSections } from "@/lib/server/homeSectionsService";
+import { replaceBanners } from "@/lib/server/bannersService";
 import {
   CATALOG_ENTITIES,
+  COLLECTION_ENTITIES,
   isCatalogEntity,
+  isCollectionEntity,
 } from "@/lib/catalogEntities";
 import { InvalidBodyError, InvalidEntityError } from "@/lib/server/apiError";
 
@@ -65,9 +69,9 @@ export async function POST(req: NextRequest, ctx: EntityContext) {
 /**
  * PUT /api/data/[entity] — reemplazo ATÓMICO de una colección.
  *
- * Solo lo usa `home_sections` (Fase D): el panel guarda el orden y la
- * activación del conjunto, no filas sueltas. El catálogo sigue con
- * POST/PATCH/DELETE por fila.
+ * Lo usan las colecciones del CMS (`home_sections`, `banners`): el panel
+ * guarda el orden, la activación y la vigencia del conjunto, no filas
+ * sueltas. El catálogo sigue con POST/PATCH/DELETE por fila.
  */
 export async function PUT(req: NextRequest, ctx: EntityContext) {
   const backend = requireSupabaseBackend();
@@ -77,10 +81,10 @@ export async function PUT(req: NextRequest, ctx: EntityContext) {
   if (guard instanceof NextResponse) return guard;
 
   const { entity } = await ctx.params;
-  if (entity !== "home_sections" || !isCatalogEntity(entity)) {
+  if (!isCollectionEntity(entity) || !isCatalogEntity(entity)) {
     return errorResponse(
       new InvalidEntityError(
-        `La escritura por colección solo está soportada en "home_sections". ` +
+        `La escritura por colección solo está soportada en: ${COLLECTION_ENTITIES.join(", ")}. ` +
           `Para "${entity || ""}" usá POST/PATCH/DELETE sobre /api/data/${entity}/[id].`
       )
     );
@@ -94,7 +98,10 @@ export async function PUT(req: NextRequest, ctx: EntityContext) {
   }
 
   try {
-    const replaced = await replaceHomeSections(body);
+    const replaced =
+      entity === "home_sections"
+        ? await replaceHomeSections(body)
+        : await replaceBanners(body);
     return NextResponse.json({
       ok: true,
       action: "replace",

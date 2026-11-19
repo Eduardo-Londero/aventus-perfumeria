@@ -9,8 +9,9 @@
  *     escritura de catálogo vía `/api/data/*` con write-through optimista
  *     (Fase C-2). Los PEDIDOS no pasan por esta API síncrona en remoto: se
  *     crean/leen con src/lib/ordersRemote.ts (RPC `create_order_atomic` +
- *     /api/admin/orders). Las SECCIONES DEL HOME se guardan desde la Fase D
- *     como colección completa (PUT /api/data/home_sections).
+ *     /api/admin/orders). Las SECCIONES DEL HOME y los BANNERS se guardan
+ *     desde la Fase D como colección completa (PUT /api/data/{home_sections,
+ *     banners}).
  *
  * Toda la lógica de este archivo (CRUD, validaciones, máquina de estados,
  * stock) es la MISMA en ambos backends: lo único que cambia es dónde se
@@ -33,8 +34,8 @@ import type {
   OrderStatus,
 } from "@/types";
 
-// HomepageSection está definido en types/cms.ts
-import type { HomepageSection } from "@/types/cms";
+// HomepageSection y Banner están definidos en types/cms.ts
+import type { Banner, HomepageSection } from "@/types/cms";
 
 // Reglas de negocio aplicadas por la propia capa de datos (una sola fuente de verdad)
 import { applyStatusTransition } from "@/lib/orderStatus";
@@ -760,6 +761,75 @@ export const dbHomeSections = {
 };
 
 // ============================================================
+// Banners
+// ============================================================
+
+const BANNERS_KEY = "aventus-db-banners";
+
+export const dbBanners = {
+  getAll(): Banner[] {
+    return getCollection<Banner>(BANNERS_KEY);
+  },
+
+  /** Guarda la colección COMPLETA (PUT /api/data/banners), como el home. */
+  save(banners: Banner[]): void {
+    const previous = getCollection<Banner>(BANNERS_KEY);
+
+    // Optimista, igual que el resto de la capa: el panel ve el cambio ya.
+    saveCollection(BANNERS_KEY, banners);
+
+    if (!IS_SUPABASE_BACKEND) return;
+
+    enqueueCollectionSync(
+      {
+        entity: "banners",
+        kind: "replace",
+        id: "*",
+        payload: { banners },
+      },
+      () => saveCollection(BANNERS_KEY, previous)
+    );
+  },
+
+  /**
+   * Semilla: mismos banners que `seedBanners` (seed.ts). INACTIVOS y sin
+   * fechas a propósito — ver comentario ahí.
+   */
+  getDefaultBanners(): Banner[] {
+    return [
+      {
+        id: "1",
+        title: "Nueva colección",
+        subtitle: "Descubrí las últimas fragancias",
+        image:
+          "https://images.unsplash.com/photo-1541643600914-78b084683601?w=1920&q=80",
+        buttonText: "Ver más",
+        buttonLink: "/perfumes",
+        startDate: "",
+        endDate: "",
+        isActive: false,
+        order: 1,
+        type: "collection",
+      },
+      {
+        id: "2",
+        title: "Envío gratis",
+        subtitle: "En pedidos superiores a $50.000",
+        image:
+          "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?w=1920&q=80",
+        buttonText: "Comprar ahora",
+        buttonLink: "/perfumes",
+        startDate: "",
+        endDate: "",
+        isActive: false,
+        order: 2,
+        type: "promotion",
+      },
+    ];
+  },
+};
+
+// ============================================================
 // Initialize default data
 // ============================================================
 
@@ -975,5 +1045,11 @@ export function initializeDatabase(): void {
   const homeSections = getCollection<HomepageSection>(HOME_SECTIONS_KEY);
   if (homeSections.length === 0) {
     saveCollection(HOME_SECTIONS_KEY, dbHomeSections.getDefaultSections());
+  }
+
+  // Initialize banners if empty
+  const banners = getCollection<Banner>(BANNERS_KEY);
+  if (banners.length === 0) {
+    saveCollection(BANNERS_KEY, dbBanners.getDefaultBanners());
   }
 }

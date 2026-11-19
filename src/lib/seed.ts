@@ -22,7 +22,7 @@
 import { products } from "@/data/products";
 import { brands } from "@/data/brands";
 import type { Product, Brand, Category, Gender } from "@/types";
-import type { HomepageSection } from "@/types/cms";
+import type { Banner, HomepageSection } from "@/types/cms";
 
 // Reutilizamos los datos reales que ya existen en el proyecto.
 export const seedProducts: Product[] = products;
@@ -106,6 +106,45 @@ export const seedHomeSections: HomepageSection[] = [
   { id: "8", type: "about", title: "Sobre Aventus", isActive: true, order: 8 },
   { id: "9", type: "instagram", title: "Instagram", isActive: true, order: 9 },
   { id: "10", type: "contact", title: "Contacto", isActive: true, order: 10 },
+];
+
+/**
+ * Banners iniciales (semilla del CMS de banners).
+ * Mismos banners y orden que `dbBanners.getDefaultBanners()` (db.ts).
+ *
+ * Se dejan INACTIVOS y sin fechas a propósito: son material de ejemplo, y
+ * activarlos no debe cambiar la portada de quien acaba de desplegar. Desde
+ * /admin/banners se encienden (y ahí sí aparecen en el home en ≤ 30 s).
+ */
+export const seedBanners: Banner[] = [
+  {
+    id: "1",
+    title: "Nueva colección",
+    subtitle: "Descubrí las últimas fragancias",
+    image:
+      "https://images.unsplash.com/photo-1541643600914-78b084683601?w=1920&q=80",
+    buttonText: "Ver más",
+    buttonLink: "/perfumes",
+    startDate: "",
+    endDate: "",
+    isActive: false,
+    order: 1,
+    type: "collection",
+  },
+  {
+    id: "2",
+    title: "Envío gratis",
+    subtitle: "En pedidos superiores a $50.000",
+    image:
+      "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?w=1920&q=80",
+    buttonText: "Comprar ahora",
+    buttonLink: "/perfumes",
+    startDate: "",
+    endDate: "",
+    isActive: false,
+    order: 2,
+    type: "promotion",
+  },
 ];
 
 // ============================================================

@@ -39,9 +39,9 @@ export async function generateMetadata({
   const brand = brands.find((b) => b.slug === slug);
 
   if (!brand) {
-    return {
-      title: "Marca no encontrada | Aventus Perfumería",
-    };
+    // Mismo motivo que en perfumes/[slug]: el 404 tiene que salir de
+    // `generateMetadata` para que el status sea 404 y no 200 (soft-404).
+    notFound();
   }
 
   return {

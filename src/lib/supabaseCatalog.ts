@@ -1,26 +1,29 @@
 /**
  * Cargador del catálogo desde Supabase (Fase C-1)
  * ===============================================
- * Una sola carga por hidratación, sin N+1: cinco consultas en paralelo
- * (genders, categories, brands, products, product_categories) resueltas y
- * mapeadas a los tipos de la app en src/lib/catalogMapper.
+ * Una sola carga por hidratación, sin N+1: siete consultas en paralelo
+ * (genders, categories, brands, products, product_categories, home_sections,
+ * banners) resueltas y mapeadas a los tipos de la app en src/lib/catalogMapper.
  *
  * SOLO LECTURA vía cliente `anon` (RLS: catálogo activo). Si una consulta
  * falla se lanza con el detalle: el driver decide cómo degradar (en Fase C-1
  * la tienda conserva la semilla local y el error queda registrado).
  *
- * Pedidos y secciones del home NO se hidratan aquí: el esquema 0001 modela
- * pedidos con eje de pago/logística + profiles (F3) y no tiene tabla para
- * HomepageSection (ver informe P1.3.42).
+ * Pedidos NO se hidratan acá (el esquema 0001 modela pagos/logística +
+ * profiles, F3). El CMS del home (`home_sections`) y los banners SÍ, desde la
+ * Fase D: sus consultas degradan a lista vacía para que un problema del panel
+ * nunca deje la tienda sin catálogo.
  */
 
 import type { Brand, Category, Gender, Product } from "@/types";
-import type { HomepageSection } from "@/types/cms";
+import type { Banner, HomepageSection } from "@/types/cms";
 import {
+  bannerRowToBanner,
   brandRowToBrand,
   categoryRowToCategory,
   genderRowToGender,
   rowsToProducts,
+  type BannerRow,
   type BrandRow,
   type CategoryRow,
   type GenderRow,
@@ -44,6 +47,8 @@ export interface CatalogPayload {
    * `undefined` como "sin secciones".
    */
   homeSections?: HomepageSection[];
+  /** Banners del CMS (mismo criterio de degradación que `homeSections`). */
+  banners?: Banner[];
 }
 
 interface QueryResult<T> {
@@ -68,7 +73,7 @@ function unwrap<T>(result: QueryResult<T>, table: string): T[] {
 export async function fetchCatalog(): Promise<CatalogPayload> {
   const supabase = getSupabase();
 
-  const [genders, categories, brands, products, links, sections] =
+  const [genders, categories, brands, products, links, sections, banners] =
     await Promise.all([
       supabase.from("genders").select("id, name, is_active"),
       supabase
@@ -89,6 +94,13 @@ export async function fetchCatalog(): Promise<CatalogPayload> {
       supabase
         .from("home_sections")
         .select("id, type, title, is_active, order, content")
+        .order("order", { ascending: true }),
+      // Fase D: banners. Mismo criterio de degradación que las secciones.
+      supabase
+        .from("banners")
+        .select(
+          "id, title, subtitle, image, button_text, button_link, start_date, end_date, is_active, order, type"
+        )
         .order("order", { ascending: true }),
     ]);
 
@@ -125,11 +137,24 @@ export async function fetchCatalog(): Promise<CatalogPayload> {
     );
   }
 
+  // Banners: mismo criterio (error → lista vacía → la tienda usa su semilla).
+  const bannerResult = banners as QueryResult<BannerRow>;
+  let bannerList: Banner[] = [];
+  if (bannerResult.error) {
+    console.error(
+      "[supabaseCatalog] no se pudieron leer los banners:",
+      bannerResult.error.message
+    );
+  } else {
+    bannerList = (bannerResult.data ?? []).map(bannerRowToBanner);
+  }
+
   return {
     genders: genderRows.map(genderRowToGender),
     categories: categoryRows.map(categoryRowToCategory),
     brands: brandRows.map(brandRowToBrand),
     products: rowsToProducts(productRows, linkRows),
     homeSections,
+    banners: bannerList,
   };
 }

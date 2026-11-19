@@ -9,6 +9,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type { Brand, Category, Product } from "@/types";
 import {
+  bannerToRow,
   brandToRow,
   categoryToRow,
   createEntity,
@@ -20,10 +21,12 @@ import {
   updateEntity,
 } from "@/lib/server/catalogWriteService";
 import { ValidationError, mapPostgrestError } from "@/lib/server/apiError";
-import { productRowToProduct } from "@/lib/catalogMapper";
+import { productRowToProduct, bannerRowToBanner } from "@/lib/catalogMapper";
 import {
   CATALOG_ENTITIES,
+  COLLECTION_ENTITIES,
   isCatalogEntity,
+  isCollectionEntity,
 } from "@/lib/catalogEntities";
 
 const product: Product = {
@@ -58,13 +61,14 @@ afterEach(() => {
 });
 
 describe("lista blanca de entidades (compartida cliente/servidor)", () => {
-  it("acepta exactamente las colecciones hidratadas (catálogo + CMS del home)", () => {
+  it("acepta exactamente las colecciones hidratadas (catálogo + CMS)", () => {
     expect(CATALOG_ENTITIES).toEqual([
       "products",
       "categories",
       "brands",
       "genders",
       "home_sections",
+      "banners",
     ]);
     for (const entity of CATALOG_ENTITIES) {
       expect(isCatalogEntity(entity)).toBe(true);
@@ -74,6 +78,90 @@ describe("lista blanca de entidades (compartida cliente/servidor)", () => {
     // que se usa en el modelo de la app NO debe ser aceptado por la API.
     expect(isCatalogEntity("homeSections")).toBe(false);
     expect(isCatalogEntity(42)).toBe(false);
+  });
+
+  it("la escritura por colección (PUT) solo admite home_sections y banners", () => {
+    expect([...COLLECTION_ENTITIES]).toEqual(["home_sections", "banners"]);
+    expect(isCollectionEntity("home_sections")).toBe(true);
+    expect(isCollectionEntity("banners")).toBe(true);
+    expect(isCollectionEntity("products")).toBe(false);
+    expect(isCollectionEntity(undefined)).toBe(false);
+  });
+});
+
+describe("bannerToRow (CMS de banners)", () => {
+  const banner = {
+    id: "1",
+    title: "Envío gratis",
+    subtitle: "En pedidos superiores a $50.000",
+    image: "https://img/banner.jpg",
+    buttonText: "Comprar",
+    buttonLink: "/perfumes",
+    startDate: "",
+    endDate: "",
+    isActive: true,
+    order: 2,
+    type: "promotion",
+  };
+
+  it("acepta un banner completo y lo mapea a la fila", () => {
+    const row = bannerToRow(banner);
+    expect(row).toEqual({
+      id: "1",
+      title: "Envío gratis",
+      subtitle: "En pedidos superiores a $50.000",
+      image: "https://img/banner.jpg",
+      button_text: "Comprar",
+      button_link: "/perfumes",
+      start_date: null,
+      end_date: null,
+      is_active: true,
+      order: 2,
+      type: "promotion",
+    });
+    // Ida y vuelta: la fila vuelve al modelo sin cambios.
+    expect(bannerRowToBanner(row)).toEqual(banner);
+  });
+
+  it("sin fechas el banner queda con vigencia abierta (NULL)", () => {
+    expect(bannerToRow({ ...banner, startDate: "", endDate: "" })).toMatchObject({
+      start_date: null,
+      end_date: null,
+    });
+  });
+
+  it("rechaza un tipo de banner fuera de la lista blanca", () => {
+    expect(() => bannerToRow({ ...banner, type: "whatever" })).toThrow(
+      /tipo de banner/
+    );
+  });
+
+  it("rechaza fechas con formato distinto a AAAA-MM-DD", () => {
+    expect(() => bannerToRow({ ...banner, startDate: "31/12/2026" })).toThrow(
+      /AAAA-MM-DD/
+    );
+    expect(() => bannerToRow({ ...banner, endDate: "navidad" })).toThrow(
+      /AAAA-MM-DD/
+    );
+  });
+
+  it("rechaza una fecha final anterior a la inicial", () => {
+    expect(() =>
+      bannerToRow({ ...banner, startDate: "2026-12-31", endDate: "2026-01-01" })
+    ).toThrow(/endDate/);
+  });
+
+  it("exige título y acepta el resto con defaults seguros", () => {
+    expect(() => bannerToRow({ ...banner, title: "  " })).toThrow(/"title"/);
+    const row = bannerToRow({ id: "9", title: "Solo título", type: "season" });
+    expect(row).toMatchObject({
+      subtitle: "",
+      image: "",
+      button_text: "",
+      button_link: "",
+      is_active: true,
+      order: 0,
+    });
   });
 });
 

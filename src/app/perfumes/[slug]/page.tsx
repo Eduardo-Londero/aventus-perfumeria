@@ -43,9 +43,11 @@ export async function generateMetadata({
   const product = products.find((p) => p.slug === slug);
 
   if (!product) {
-    return {
-      title: "Producto no encontrado | Aventus Perfumería",
-    };
+    // El 404 se lanza ACÁ, no solo en el page: `generateMetadata` se resuelve
+    // ANTES de mandar el shell de la respuesta, y con src/app/loading.tsx ese
+    // shell sale con status 200 (el `notFound()` del page terminaba llegando
+    // como error en streaming → soft-404, malo para SEO).
+    notFound();
   }
 
   const brand = brands.find((b) => b.id === product.brand);
@@ -64,12 +66,19 @@ export async function generateMetadata({
 
 export default async function ProductPage({ params }: ProductPageProps) {
   const { slug } = await params;
-  const { products } = await getStorefront();
+  const { products, brands, genders } = await getStorefront();
   const product = products.find((p) => p.slug === slug);
 
   if (!product) {
     notFound();
   }
+
+  // El modelo guarda IDS (brand: "dior", gender: "hombre"): para MOSTRAR se
+  // resuelven contra el catálogo, como hace el resto de la página.
+  const brandName = (id: string) =>
+    brands.find((b) => b.id === id)?.name ?? id;
+  const genderName = (id: string) =>
+    genders.find((g) => g.id === id)?.name ?? id;
 
   // Productos relacionados desde el MISMO catálogo que acaba de cargar la página
   const relatedProducts = products
@@ -275,10 +284,10 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
             {[
-              { label: "Marca", value: product.brand },
+              { label: "Marca", value: brandName(product.brand) },
               { label: "Concentración", value: product.concentration },
               { label: "Tamaño", value: product.size },
-              { label: "Género", value: product.gender },
+              { label: "Género", value: genderName(product.gender) },
               { label: "Familia olfativa", value: product.olfactoryFamily },
               {
                 label: "Disponibilidad",

@@ -23,12 +23,14 @@ import { IS_SUPABASE_BACKEND } from "@/lib/dataBackend";
 import { fetchCatalog } from "@/lib/supabaseCatalog";
 import {
   seedBrands,
+  seedBanners,
   seedCategories,
+  seedGenders,
   seedHomeSections,
   seedProducts,
 } from "@/lib/seed";
-import type { Brand, Category, Product } from "@/types";
-import type { HomepageSection } from "@/types/cms";
+import type { Brand, Category, Gender, Product } from "@/types";
+import type { Banner, HomepageSection } from "@/types/cms";
 
 /**
  * Segundos que cada página pública queda cacheada (ISR).
@@ -41,8 +43,19 @@ export interface Storefront {
   products: Product[];
   brands: Brand[];
   categories: Category[];
+  /**
+   * Géneros del catálogo (id + nombre). El id es lo que compara el filtro de
+   * /perfumes (`Product.gender`); el nombre es lo que se MUESTRA.
+   */
+  genders: Gender[];
   /** Solo activas, ordenadas por `order`. */
   sections: HomepageSection[];
+  /**
+   * Banners del CMS, ordenados. Se devuelven TODOS (igual que `products`):
+   * el home aplica `selectVisibleBanners` (activo + vigencia por fechas) al
+   * renderizar, que es donde conocemos "hoy".
+   */
+  banners: Banner[];
   /** Diagnóstico: de dónde salió todo (para tests/log, no se muestra). */
   source: "supabase" | "seed";
 }
@@ -62,7 +75,9 @@ function seedStorefront(): Storefront {
     products: seedProducts,
     brands: seedBrands,
     categories: seedCategories.filter((c) => c.isActive).sort(byOrder),
+    genders: seedGenders.filter((g) => g.isActive),
     sections: activeSections(seedHomeSections),
+    banners: [...seedBanners].sort(byOrder),
     source: "seed",
   };
 }
@@ -81,6 +96,8 @@ export async function getStorefront(): Promise<Storefront> {
     const remoteSections = (catalog.homeSections ?? []).filter(
       (section) => section.isActive
     );
+    const remoteBanners = catalog.banners ?? [];
+    const remoteGenders = catalog.genders.filter((g) => g.isActive);
 
     return {
       products:
@@ -90,10 +107,16 @@ export async function getStorefront(): Promise<Storefront> {
         catalog.categories.length > 0
           ? catalog.categories.filter((c) => c.isActive).sort(byOrder)
           : seedCategories.filter((c) => c.isActive).sort(byOrder),
+      genders:
+        remoteGenders.length > 0 ? remoteGenders : seedGenders,
       sections:
         remoteSections.length > 0
           ? remoteSections.sort((a, b) => a.order - b.order)
           : activeSections(seedHomeSections),
+      banners:
+        remoteBanners.length > 0
+          ? [...remoteBanners].sort(byOrder)
+          : [...seedBanners].sort(byOrder),
       source: "supabase",
     };
   } catch (error) {

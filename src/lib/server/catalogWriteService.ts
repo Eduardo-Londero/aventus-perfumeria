@@ -26,6 +26,7 @@
 
 import { arsToCents } from "@/lib/catalogMapper";
 import type {
+  BannerRow,
   BrandRow,
   CategoryRow,
   GenderRow,
@@ -35,6 +36,7 @@ import {
   CATALOG_ENTITY_NOUN,
   type CatalogEntity,
 } from "@/lib/catalogEntities";
+import { isBannerType } from "@/lib/banners";
 import { isHomeSectionType, type HomeSectionRow } from "@/lib/homeSectionsMigration";
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import {
@@ -267,6 +269,56 @@ export function homeSectionToRow(value: unknown): HomeSectionRow {
   };
 }
 
+/** Fecha opcional `AAAA-MM-DD` → `YYYY-MM-DD` o null (vacío = sin límite). */
+const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function optDate(value: unknown, field: string): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || !DATE_KEY_RE.test(value)) {
+    throw new ValidationError(
+      `El campo "${field}" debe ser una fecha en formato "AAAA-MM-DD" (o vacío para no limitar).`
+    );
+  }
+  return value;
+}
+
+/**
+ * Banner app → fila de `banners`. `startDate`/`endDate` son opcionales: sin
+ * fechas el banner siempre está vigente mientras esté activo.
+ */
+export function bannerToRow(value: unknown): BannerRow {
+  const body = asRecord(value);
+  const type = reqText(body.type, "type", MAX_SHORT);
+  if (!isBannerType(type)) {
+    throw new ValidationError(
+      `El campo "type" no corresponde a un tipo de banner: "${type}".`
+    );
+  }
+  const start_date = optDate(body.startDate, "startDate");
+  const end_date = optDate(body.endDate, "endDate");
+  if (start_date && end_date && end_date < start_date) {
+    throw new ValidationError(
+      'La fecha final ("endDate") no puede ser anterior a la inicial ("startDate").'
+    );
+  }
+
+  return {
+    id: reqText(body.id, "id", MAX_ID),
+    title: reqText(body.title, "title"),
+    subtitle: optText(body.subtitle, "subtitle", { nullAs: "" }) ?? "",
+    image: optText(body.image, "image", { max: 2_048, nullAs: "" }) ?? "",
+    button_text:
+      optText(body.buttonText, "buttonText", { max: 80, nullAs: "" }) ?? "",
+    button_link:
+      optText(body.buttonLink, "buttonLink", { max: 2_048, nullAs: "" }) ?? "",
+    start_date,
+    end_date,
+    is_active: optBool(body.isActive, "isActive", true),
+    order: optInt(body.order, "order", { min: 0, fallback: 0 }),
+    type,
+  };
+}
+
 /**
  * Producto app → fila. `created_at` solo se usa en INSERT: en UPDATE se
  * elimina (ver `productUpdateRow`) para conservar la fecha de alta original.
@@ -459,6 +511,13 @@ export async function createEntity(
     return { id: row.id };
   }
 
+  if (entity === "banners") {
+    const row = bannerToRow(body);
+    const { error } = await getSupabaseAdmin().from("banners").insert(row);
+    if (error) throw mapPostgrestError(error, { entity, action: "create" });
+    return { id: row.id };
+  }
+
   const row = genderToRow(body);
   const { error } = await getSupabaseAdmin().from("genders").insert(row);
   if (error) throw mapPostgrestError(error, { entity, action: "create" });
@@ -613,6 +672,25 @@ export async function updateEntity(
     return { id };
   }
 
+  if (entity === "banners") {
+    const row = bannerToRow(body);
+    if (row.id !== id) {
+      throw new ValidationError(
+        `El ID del cuerpo ("${row.id}") no coincide con el de la URL ("${id}").`
+      );
+    }
+    const { data, error } = await getSupabaseAdmin()
+      .from("banners")
+      .update(row)
+      .eq("id", id)
+      .select("id");
+    if (error) throw mapPostgrestError(error, { entity, action: "update" });
+    if (!data || data.length === 0) {
+      throw new NotFoundError(`No existe un banner con ID "${id}".`);
+    }
+    return { id };
+  }
+
   const row = genderToRow(body);
   if (row.id !== id) {
     throw new ValidationError(
@@ -689,7 +767,9 @@ export async function deleteEntity(
             ? "una categoría"
             : entity === "home_sections"
               ? "una sección del home"
-              : "un género"
+              : entity === "banners"
+                ? "un banner"
+                : "un género"
       } con ID "${id}".`
     );
   }

@@ -82,6 +82,7 @@ export type CatalogLoader = () => Promise<{
   brands: unknown[];
   products: unknown[];
   homeSections?: unknown[];
+  banners?: unknown[];
 }>;
 
 /** Claves de colección que este driver puede hidratar (todas menos pedidos). */
@@ -93,8 +94,10 @@ const HYDRATABLE_KEYS: Array<{
   { key: "aventus-db-categories", pick: (p) => p.categories },
   { key: "aventus-db-brands", pick: (p) => p.brands },
   { key: "aventus-db-products", pick: (p) => p.products },
-  // Fase D: el CMS del home. `?? []` para payloads/mocks sin la colección.
+  // Fase D: el CMS del home y los banners. `?? []` para payloads/mocks sin la
+  // colección.
   { key: "aventus-db-home-sections", pick: (p) => p.homeSections ?? [] },
+  { key: "aventus-db-banners", pick: (p) => p.banners ?? [] },
 ];
 
 function deepCopy<T>(value: T): T {

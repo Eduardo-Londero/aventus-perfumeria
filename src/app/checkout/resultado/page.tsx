@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useOrders } from "@/context/OrdersContext";
@@ -32,7 +32,7 @@ const STATUS_CONFIG: Record<ResultStatus, { title: string; message: string; colo
   },
 };
 
-export default function CheckoutResultadoPage() {
+function CheckoutResultadoContent() {
   const router = useRouter();
   const params = useSearchParams();
   const { getOrderById } = useOrders();
@@ -138,5 +138,24 @@ export default function CheckoutResultadoPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CheckoutResultadoPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 border-2 border-charcoal-200 border-t-gold-500 rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-sm tracking-widest2 uppercase text-charcoal-400">
+              Cargando
+            </p>
+          </div>
+        </div>
+      }
+    >
+      <CheckoutResultadoContent />
+    </Suspense>
   );
 }

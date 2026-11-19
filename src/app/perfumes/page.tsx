@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 };
 
 export default async function PerfumesPage() {
-  const { products } = await getStorefront();
+  const { products, genders } = await getStorefront();
 
   return (
     <Suspense
@@ -29,7 +29,7 @@ export default async function PerfumesPage() {
         </div>
       }
     >
-      <PerfumesClient products={selectActive(products)} />
+      <PerfumesClient products={selectActive(products)} genders={genders} />
     </Suspense>
   );
 }

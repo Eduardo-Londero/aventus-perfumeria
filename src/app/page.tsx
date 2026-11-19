@@ -7,6 +7,7 @@ import {
   selectNew,
   selectOnSale,
 } from "@/lib/server/storefront";
+import { selectVisibleBanners } from "@/lib/banners";
 import { faqs } from "@/data/faqs";
 import { siteConfig, generateWhatsAppUrl } from "@/config/site";
 import CategoryCard from "@/components/products/CategoryCard";
@@ -20,8 +21,10 @@ export const revalidate = 30;
 
 export default async function HomePage() {
   // Datos públicos: catálogo + secciones ACTIVAS tal como están en la base.
-  // El orden y la activación los administra el panel en Inicio (home_sections).
-  const { products, categories, brands, sections } = await getStorefront();
+  // El orden y la activación los administra el panel en Inicio (home_sections);
+  // los banners, en Banners (banners).
+  const { products, categories, brands, sections, banners } =
+    await getStorefront();
   const activeSections = sections;
   const featuredProducts = selectFeatured(products).slice(0, 8);
   const newProducts = selectNew(products).slice(0, 8);
@@ -435,6 +438,69 @@ export default async function HomePage() {
             </div>
           </section>
         );
+
+      case "banner": {
+        // Banners del CMS: solo los ACTIVOS y VIGENTES hoy (el panel puede
+        // programar fechas). Sin ninguno, la sección no deja hueco.
+        const visibleBanners = selectVisibleBanners(banners);
+        if (visibleBanners.length === 0) return null;
+
+        return (
+          <section key="banner" className="py-20 bg-charcoal-950">
+            <div className="container-aventus">
+              <div className="text-center mb-12">
+                <p className="text-xs tracking-widest2 uppercase text-gold-400 mb-3">
+                  Promociones
+                </p>
+                <h2 className="font-serif text-3xl sm:text-4xl text-white tracking-tight">
+                  Lo nuevo de Aventus
+                </h2>
+              </div>
+
+              {/* Carrusel con scroll-snap (sin JS): una fila que se desliza en
+                  horizontal y se adapta a una, dos o tres tarjetas por pantalla. */}
+              <div className="flex gap-6 overflow-x-auto snap-x snap-mandatory pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {visibleBanners.map((banner) => (
+                  <article
+                    key={banner.id}
+                    className="group relative shrink-0 snap-start w-[85%] sm:w-[48%] lg:w-[32%] aspect-[4/3] overflow-hidden bg-charcoal-900"
+                  >
+                    {banner.image ? (
+                      <Image
+                        src={banner.image}
+                        alt={banner.title}
+                        fill
+                        sizes="(max-width: 640px) 85vw, (max-width: 1024px) 48vw, 32vw"
+                        className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : null}
+                    <div className="absolute inset-0 bg-gradient-to-t from-charcoal-950/90 via-charcoal-950/40 to-transparent" />
+
+                    <div className="absolute inset-x-0 bottom-0 p-6">
+                      <h3 className="font-serif text-2xl text-white leading-snug">
+                        {banner.title}
+                      </h3>
+                      {banner.subtitle ? (
+                        <p className="mt-1 text-sm text-white/80">
+                          {banner.subtitle}
+                        </p>
+                      ) : null}
+                      {banner.buttonText && banner.buttonLink ? (
+                        <Link
+                          href={banner.buttonLink}
+                          className="mt-4 inline-block text-xs tracking-widest uppercase text-gold-400 border-b border-gold-400/60 pb-1 hover:text-gold-300 hover:border-gold-300 transition-colors"
+                        >
+                          {banner.buttonText}
+                        </Link>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      }
 
       default:
         return null;

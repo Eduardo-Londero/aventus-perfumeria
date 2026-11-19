@@ -10,7 +10,7 @@ import {
   getUniqueOlfactoryFamilies,
   getPriceRange,
 } from "@/data/products";
-import { FilterState, Product, SortOption } from "@/types";
+import { FilterState, Gender, Product, SortOption } from "@/types";
 import { formatPrice } from "@/config/site";
 import SearchBar from "@/components/products/SearchBar";
 import ProductGrid from "@/components/products/ProductGrid";
@@ -20,9 +20,15 @@ import ProductGrid from "@/components/products/ProductGrid";
  * desde Supabase y llega como prop. Así el HTML prerenderizado ya trae los
  * productos REALES (SEO y primer pintado) sin esperar hidratación en el
  * navegador ni pisar la semilla.
+ *
+ * `genders` viene del mismo catálogo: el filtro guarda IDS (`Product.gender`
+ * es "hombre"/"mujer"/"unisex") y de acá sale el rótulo a mostrar. Antes se
+ * guardaban rótulos ("Masculino") y se comparaban contra ids: el filtro nunca
+ * filtraba.
  */
 interface PerfumesClientProps {
   products: Product[];
+  genders: Gender[];
 }
 
 const baseFilters: FilterState = {
@@ -44,7 +50,10 @@ function buildInitialFilters(products: Product[]): FilterState {
   return { ...baseFilters, priceRange: getPriceRange(products) };
 }
 
-export default function PerfumesClient({ products }: PerfumesClientProps) {
+export default function PerfumesClient({
+  products,
+  genders,
+}: PerfumesClientProps) {
   const searchParams = useSearchParams();
   // El parámetro canónico es "categoria". Se acepta "category" como alias legado
   // para que enlaces antiguos no fallen en silencio mostrando todo el catálogo.
@@ -63,6 +72,33 @@ export default function PerfumesClient({ products }: PerfumesClientProps) {
     () => getUniqueOlfactoryFamilies(products),
     [products]
   );
+
+  /**
+   * Opciones del filtro de género: SOLO los ids que realmente aparecen en el
+   * catálogo (para no mostrar casilleros que no devuelven nada), en el orden
+   * del catálogo de géneros y con su nombre a mostrar. Si un id no está en el
+   * catálogo se usa su propia capitalización.
+   */
+  const genderOptions = useMemo(() => {
+    const present = Array.from(new Set(products.map((p) => p.gender)));
+    const index = new Map(genders.map((g) => [g.id, g] as const));
+    const known = (id: string) => {
+      const i = genders.findIndex((g) => g.id === id);
+      return i === -1 ? genders.length : i;
+    };
+
+    return present
+      .sort((a, b) => known(a) - known(b))
+      .map((id) => {
+        const gender = index.get(id);
+        return {
+          id,
+          label:
+            gender?.name ?? id.charAt(0).toUpperCase() + id.slice(1),
+        };
+      });
+  }, [products, genders]);
+
   const [minPrice, maxPrice] = useMemo(
     () => getPriceRange(products),
     [products]
@@ -201,14 +237,15 @@ export default function PerfumesClient({ products }: PerfumesClientProps) {
         ))}
       </FilterSection>
 
-      {/* Gender */}
+      {/* Gender — el valor es el ID del género ("hombre"), que es lo que
+          compara filterProducts contra Product.gender. */}
       <FilterSection title="Género">
-        {["Masculino", "Femenino", "Unisex"].map((g) => (
+        {genderOptions.map((g) => (
           <CheckboxItem
-            key={g}
-            label={g}
-            checked={filters.gender.includes(g)}
-            onChange={() => toggleArrayFilter("gender", g)}
+            key={g.id}
+            label={g.label}
+            checked={filters.gender.includes(g.id)}
+            onChange={() => toggleArrayFilter("gender", g.id)}
           />
         ))}
       </FilterSection>

@@ -17,6 +17,8 @@
  */
 
 import type { Brand, Category, Gender, Product } from "@/types";
+import type { Banner } from "@/types/cms";
+import { isBannerType } from "@/lib/banners";
 
 // ---------------------------------------------------------------------------
 // Tipos de fila (alineados con supabase/migrations/20261016_0001_schema_core.sql)
@@ -46,6 +48,24 @@ export interface BrandRow {
   image_url: string | null;
   order: number;
   is_active: boolean;
+}
+
+/**
+ * Fila de `banners` (migración 20261118_0008). Fechas `YYYY-MM-DD` o null
+ * (sin límite) y `type` como text plano: el mapeo lo acota al modelo.
+ */
+export interface BannerRow {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  image: string | null;
+  button_text: string | null;
+  button_link: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  is_active: boolean;
+  order: number;
+  type: string;
 }
 
 export interface ProductRow {
@@ -127,6 +147,24 @@ export function brandRowToBrand(row: BrandRow): Brand {
     isActive: row.is_active,
     order: row.order,
     // logo/website: sin columna en 0001 (brecha documentada en P1.3.42).
+  };
+}
+
+/** Fila de `banners` → modelo de la app (null → "" para los campos de texto). */
+export function bannerRowToBanner(row: BannerRow): Banner {
+  return {
+    id: row.id,
+    title: row.title,
+    subtitle: row.subtitle ?? "",
+    image: row.image ?? "",
+    buttonText: row.button_text ?? "",
+    buttonLink: row.button_link ?? "",
+    startDate: row.start_date ?? "",
+    endDate: row.end_date ?? "",
+    isActive: row.is_active,
+    order: row.order,
+    // Defensivo: un valor fuera de la lista no debe tumbar la tienda.
+    type: isBannerType(row.type) ? row.type : "promotion",
   };
 }
 

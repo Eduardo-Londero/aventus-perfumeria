@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import PerfumesClient from "./PerfumesClient";
+import { getStorefront, selectActive } from "@/lib/server/storefront";
+
+// ISR 30 s: el catálogo del panel (precios, stock, altas, bajas) se refleja
+// en ≤ 30 s sin redeploy. Fuente: src/lib/server/storefront.ts.
+export const revalidate = 30;
 
 export const metadata: Metadata = {
   title: "Perfumes | Aventus Perfumería",
@@ -13,7 +18,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function PerfumesPage() {
+export default async function PerfumesPage() {
+  const { products } = await getStorefront();
+
   return (
     <Suspense
       fallback={
@@ -22,7 +29,7 @@ export default function PerfumesPage() {
         </div>
       }
     >
-      <PerfumesClient />
+      <PerfumesClient products={selectActive(products)} />
     </Suspense>
   );
 }

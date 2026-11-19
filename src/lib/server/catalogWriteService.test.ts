@@ -58,17 +58,20 @@ afterEach(() => {
 });
 
 describe("lista blanca de entidades (compartida cliente/servidor)", () => {
-  it("acepta exactamente las 4 entidades hidratadas en C-1", () => {
+  it("acepta exactamente las colecciones hidratadas (catálogo + CMS del home)", () => {
     expect(CATALOG_ENTITIES).toEqual([
       "products",
       "categories",
       "brands",
       "genders",
+      "home_sections",
     ]);
     for (const entity of CATALOG_ENTITIES) {
       expect(isCatalogEntity(entity)).toBe(true);
     }
     expect(isCatalogEntity("orders")).toBe(false);
+    // El nombre canónico es "home_sections" (el de la tabla): el camelCase
+    // que se usa en el modelo de la app NO debe ser aceptado por la API.
     expect(isCatalogEntity("homeSections")).toBe(false);
     expect(isCatalogEntity(42)).toBe(false);
   });

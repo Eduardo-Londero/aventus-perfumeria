@@ -9,7 +9,8 @@
  *     escritura de catálogo vía `/api/data/*` con write-through optimista
  *     (Fase C-2). Los PEDIDOS no pasan por esta API síncrona en remoto: se
  *     crean/leen con src/lib/ordersRemote.ts (RPC `create_order_atomic` +
- *     /api/admin/orders). Las secciones del home siguen pendientes (Fase D).
+ *     /api/admin/orders). Las SECCIONES DEL HOME se guardan desde la Fase D
+ *     como colección completa (PUT /api/data/home_sections).
  *
  * Toda la lógica de este archivo (CRUD, validaciones, máquina de estados,
  * stock) es la MISMA en ambos backends: lo único que cambia es dónde se
@@ -44,7 +45,7 @@ import { releaseStock, reserveStock } from "@/lib/inventory";
 // estados, stock) es idéntica en ambos backends: la interfaz pública NO cambia.
 import { IS_SUPABASE_BACKEND, DATA_BACKEND, type DataBackend } from "@/lib/dataBackend";
 import { getDriver } from "@/lib/dbDriver";
-import { enqueueWrite, type WriteKind } from "@/lib/dataSync";
+import { enqueueCollectionSync, enqueueWrite, type WriteKind } from "@/lib/dataSync";
 import type { CatalogEntity } from "@/lib/catalogEntities";
 
 // Re-exportar para compatibilidad con consumidores existentes
@@ -119,22 +120,22 @@ export function onBackendReady(fn: () => void): () => void {
 
 /**
  * Guarda de las escrituras AÚN no migradas a esta API síncrona:
- *   - pedidos  → en supabase van por src/lib/ordersRemote.ts (RPC + API
- *                 admin); esta API síncrona no puede esperar la red
- *   - home/CMS → Fase D (el esquema 0001 no tiene tabla de secciones)
+ *   - pedidos → en supabase van por src/lib/ordersRemote.ts (RPC + API
+ *               admin); esta API síncrona no puede esperar la red.
  *
- * El catálogo (productos, categorías, marcas y géneros) YA escribe en remoto:
- * ver `writeThrough` más abajo. El flag por defecto (localStorage) no se ve
- * afectado por ninguna de las dos rutas.
+ * El catálogo (productos, categorías, marcas y géneros) YA escribe en remoto
+ * con write-through por fila, y las secciones del home (Fase D) con
+ * `dbHomeSections.save` → PUT /api/data/home_sections. El flag por defecto
+ * (localStorage) no se ve afectado por ninguna de las rutas.
  */
 function guardWrite(operation: string): void {
   if (IS_SUPABASE_BACKEND) {
     throw new Error(
       `[data-backend=supabase] ${operation} todavía no está disponible en la ` +
         `API síncrona: en el backend remoto los pedidos se manejan con ` +
-        `src/lib/ordersRemote.ts (RPC create_order_atomic y /api/admin/orders) ` +
-        `y las secciones del home siguen pendientes (Fase D: sin tabla en el ` +
-        `esquema 0001). El catálogo sí escribe desde la Fase C-2.`
+        `src/lib/ordersRemote.ts (RPC create_order_atomic y /api/admin/orders). ` +
+        `El catálogo sí escribe desde la Fase C-2 y las secciones del home ` +
+        `desde la Fase D (PUT /api/data/home_sections).`
     );
   }
 }
@@ -713,8 +714,25 @@ export const dbHomeSections = {
   },
 
   save(sections: HomepageSection[]): void {
-    guardWrite("dbHomeSections.save");
+    const previous = getCollection<HomepageSection>(HOME_SECTIONS_KEY);
+
+    // Optimista, igual que el resto de la capa: el panel ve el cambio ya.
     saveCollection(HOME_SECTIONS_KEY, sections);
+
+    if (!IS_SUPABASE_BACKEND) return;
+
+    // Fase D: el CMS se guarda como COLECCIÓN (PUT con la lista completa),
+    // no fila por fila, porque lo que importa es el orden + activación del
+    // conjunto y la primera guarda no tiene filas previas en la base.
+    enqueueCollectionSync(
+      {
+        entity: "home_sections",
+        kind: "replace",
+        id: "*",
+        payload: { sections },
+      },
+      () => saveCollection(HOME_SECTIONS_KEY, previous)
+    );
   },
 
   getDefaultSections(): HomepageSection[] {

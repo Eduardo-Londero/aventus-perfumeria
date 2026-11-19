@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
-import { getAllBrands, getBrandProductCount } from "@/lib/seed";
+import {
+  countProductsByBrand,
+  getStorefront,
+} from "@/lib/server/storefront";
+
+// ISR 30 s: altas/bajas de marcas hechas en el panel se reflejan solas.
+export const revalidate = 30;
 
 export const metadata: Metadata = {
   title: "Marcas | Aventus Perfumería",
@@ -14,8 +20,11 @@ export const metadata: Metadata = {
   },
 };
 
-export default function MarcasPage() {
-  const brands = getAllBrands();
+export default async function MarcasPage() {
+  const { products, brands } = await getStorefront();
+  const activeBrands = brands
+    .filter((brand) => brand.isActive)
+    .sort((a, b) => a.order - b.order);
 
   return (
     <div className="bg-cream-50 min-h-screen">
@@ -36,7 +45,7 @@ export default function MarcasPage() {
       {/* Brands Grid */}
       <div className="container-aventus py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {brands.map((brand) => (
+          {activeBrands.map((brand) => (
             <Link
               key={brand.id}
               href={`/marcas/${brand.slug}`}
@@ -54,7 +63,7 @@ export default function MarcasPage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-charcoal-900/60 to-transparent" />
                 <div className="absolute bottom-4 left-4">
                   <p className="text-xs tracking-widest2 uppercase text-gold-300">
-                    {getBrandProductCount(brand.id)} productos
+                    {countProductsByBrand(products, brand.id)} productos
                   </p>
                 </div>
               </div>

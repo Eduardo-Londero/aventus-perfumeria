@@ -1,8 +1,14 @@
 /**
- * Sincronización de escrituras del catálogo (Fase C-2)
+ * Sincronización de escrituras del catálogo (Fase C-2 / Fase D)
  * ====================================================
  * Write-through OPTIMISTA: src/lib/db.ts aplica el cambio en memoria y lo
  * encola acá; esta cola lo manda, en orden, a /api/data/*.
+ *
+ * Hay DOS formas de pedido, ambas con la misma cola/errores/rollback:
+ *   - por FILA (`enqueueWrite`): POST/PATCH/DELETE, el catálogo de siempre;
+ *   - por COLECCIÓN (`enqueueCollectionSync`): PUT con la lista completa,
+ *     usado por el CMS del home (`home_sections`), cuyo valor es el conjunto
+ *     (orden + activación) y no una fila suelta.
  *
  * Por qué optimista: la interfaz de db.ts tiene que seguir siendo SÍNCRONA
  * (`create()`, `update()`, `delete()` no devuelven promesas). El costo de
@@ -32,9 +38,25 @@ export interface WriteOp {
   payload?: unknown;
 }
 
+/**
+ * Operación sobre una colección COMPLETA (Fase D — `home_sections`).
+ * A diferencia de `WriteOp`, no apunta a una fila sino que reemplaza el
+ * conjunto: viaja como `PUT /api/data/{entity}` con la lista entera.
+ */
+export interface CollectionWriteOp {
+  entity: CatalogEntity;
+  kind: "replace";
+  /** Identificador de diagnóstico: la colección, no una fila. */
+  id: string;
+  /** Cuerpo JSON completo (la lista de secciones). */
+  payload: unknown;
+}
+
+export type SyncOp = WriteOp | CollectionWriteOp;
+
 export interface WriteFailure {
   entity: CatalogEntity;
-  kind: WriteKind;
+  kind: WriteKind | "replace";
   id: string;
   /** Mensaje listo para mostrar (ya traducido por el servidor). */
   message: string;
@@ -77,6 +99,24 @@ export function whenWritesSettled(): Promise<void> {
  * `getLastWriteError()` / `subscribeWriteFailure`.
  */
 export function enqueueWrite(op: WriteOp, rollback: () => void): void {
+  enqueue(op, rollback);
+}
+
+/**
+ * Encola un reemplazo de colección COMPLETA (`PUT /api/data/{entity}`).
+ *
+ * Misma cola, mismos errores y mismo rollback que `enqueueWrite`: solo cambia
+ * la forma del pedido (una lista entera en vez de una fila) porque así lo
+ * necesita el CMS del home (Fase D). Ver src/lib/server/homeSectionsService.
+ */
+export function enqueueCollectionSync(
+  op: CollectionWriteOp,
+  rollback: () => void
+): void {
+  enqueue(op, rollback);
+}
+
+function enqueue(op: SyncOp, rollback: () => void): void {
   if (!IS_SUPABASE_BACKEND) return;
 
   inFlight += 1;
@@ -100,7 +140,11 @@ function settle(): void {
   }
 }
 
-function handleFailure(op: WriteOp, error: unknown, rollback: () => void): void {
+function handleFailure(
+  op: SyncOp,
+  error: unknown,
+  rollback: () => void
+): void {
   const message = toMessage(error);
   const status =
     error && typeof error === "object" && "status" in error
@@ -151,15 +195,30 @@ function toMessage(error: unknown): string {
   return "No se pudo guardar el cambio en el servidor: la edición se revirtió.";
 }
 
-function endpointFor(op: WriteOp): string {
-  if (op.kind === "create") return `/api/data/${op.entity}`;
+function endpointFor(op: SyncOp): string {
+  // create y replace apuntan a la colección; update/delete a la fila.
+  if (op.kind === "create" || op.kind === "replace") {
+    return `/api/data/${op.entity}`;
+  }
   return `/api/data/${op.entity}/${encodeURIComponent(op.id)}`;
 }
 
-async function perform(op: WriteOp): Promise<void> {
+function methodFor(op: SyncOp): string {
+  switch (op.kind) {
+    case "create":
+      return "POST";
+    case "update":
+      return "PATCH";
+    case "replace":
+      return "PUT";
+    default:
+      return "DELETE";
+  }
+}
+
+async function perform(op: SyncOp): Promise<void> {
   const init: RequestInit = {
-    method:
-      op.kind === "create" ? "POST" : op.kind === "update" ? "PATCH" : "DELETE",
+    method: methodFor(op),
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
   };

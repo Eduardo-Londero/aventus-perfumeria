@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 
-export const dynamic = "force-dynamic";
+// ISR 30 s: precios, stock y altas nuevas del panel se reflejan sin redeploy.
+export const revalidate = 30;
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getProductBySlug, getAllProducts, getBrandById } from "@/lib/seed";
+import { getStorefront } from "@/lib/server/storefront";
 import ProductGallery from "@/components/products/ProductGallery";
 import ProductInfo from "@/components/products/ProductInfo";
 import ProductGrid from "@/components/products/ProductGrid";
@@ -12,11 +13,34 @@ interface ProductPageProps {
   params: Promise<{ slug: string }>;
 }
 
+/**
+ * Slugs a prerenderizar. Sin esto Next trata el segmento como 100 % dinámico
+ * e IGNORA `revalidate` (cada visita consulta la base y no hay cache): con la
+ * lista fija en build, cada página de producto entra en el ISR de 30 s.
+ * Si la lista no se puede leer (build sin red), devuelve [] y las rutas
+ * siguen funcionando on-demand (`dynamicParams` queda en true por defecto).
+ */
+export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
+  try {
+    const { products } = await getStorefront();
+    return products
+      .filter((product) => product.isActive)
+      .map((product) => ({ slug: product.slug }));
+  } catch (error) {
+    console.error(
+      "[perfumes/[slug]] generateStaticParams sin catálogo:",
+      error instanceof Error ? error.message : String(error)
+    );
+    return [];
+  }
+}
+
 export async function generateMetadata({
   params,
 }: ProductPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
+  const { products, brands } = await getStorefront();
+  const product = products.find((p) => p.slug === slug);
 
   if (!product) {
     return {
@@ -24,7 +48,7 @@ export async function generateMetadata({
     };
   }
 
-  const brand = getBrandById(product.brand);
+  const brand = brands.find((b) => b.id === product.brand);
 
   return {
     title: `${product.name} ${brand?.name || product.brand} | Aventus Perfumería`,
@@ -40,19 +64,21 @@ export async function generateMetadata({
 
 export default async function ProductPage({ params }: ProductPageProps) {
   const { slug } = await params;
-  const product = getProductBySlug(slug);
+  const { products } = await getStorefront();
+  const product = products.find((p) => p.slug === slug);
 
   if (!product) {
     notFound();
   }
 
-  // Obtener productos relacionados desde los datos iniciales compartidos
-  const relatedProducts = getAllProducts()
+  // Productos relacionados desde el MISMO catálogo que acaba de cargar la página
+  const relatedProducts = products
     .filter((p) => p.id !== product.id && p.isActive)
-    .filter((p) => 
-      p.brand === product.brand ||
-      p.olfactoryFamily === product.olfactoryFamily ||
-      p.categories.some((c) => product.categories.includes(c))
+    .filter(
+      (p) =>
+        p.brand === product.brand ||
+        p.olfactoryFamily === product.olfactoryFamily ||
+        p.categories.some((c) => product.categories.includes(c))
     )
     .slice(0, 4);
 

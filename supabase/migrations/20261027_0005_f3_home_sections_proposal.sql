@@ -1,7 +1,10 @@
 -- ============================================================================
 -- F3 — PROPUESTA de tabla home_sections (PREPARADO, NO EJECUTADO)
 -- ============================================================================
--- NO EJECUTAR. Requiere aprobación del propietario y decisión de alcance.
+-- SUPERADO por 20261118_0007_home_sections.sql, que es la versión APLICADA en
+-- el proyecto (aprobada y ejecutada por el propietario). Este archivo queda
+-- como registro histórico: NO ejecutar.
+--
 -- Solo contiene los campos que REALMENTE existen hoy en HomepageSection
 -- (src/types/cms.ts): id, type, title, isActive, order, content?.
 -- No se inventan campos de imagen/alt/href porque no existen en el modelo.

@@ -8,11 +8,15 @@
  *
  * IMPORTANTE:
  * - Este módulo NO lee ni escribe datos personalizados del usuario.
- * - Los datos modificados desde el panel de administración se guardan en
- *   `localStorage` (ver `src/lib/db.ts`) y NO pueden verse desde el servidor.
- *   Por eso, las páginas de servidor muestran siempre estos datos iniciales.
- *   Esa limitación se supera únicamente con una base de datos real.
- * - No importar nada que use `localStorage` en el grafo de este módulo.
+ * - ES LA SEMILLA: datos iniciales y fuente de RESPALDO. Las páginas
+ *   públicas ya NO leen de acá directamente: usan
+ *   src/lib/server/storefront.ts, que consulta Supabase (o degrada a esta
+ *   semilla si el backend es `localStorage` o si la consulta falla).
+ * - Las pantallas que siguen atadas a la semilla son las que aún no tienen
+ *   tabla remota (p. ej. contadores aislados); cualquier pantalla nueva debe
+ *   pasar por storefront.ts o por src/lib/db.ts.
+ * - No importar nada que use `localStorage` en el grafo de este módulo:
+ *   storefront.ts lo importa en el servidor.
  */
 
 import { products } from "@/data/products";

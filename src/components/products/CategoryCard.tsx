@@ -5,9 +5,16 @@ import { getCategoryProductCount } from "@/lib/seed";
 
 interface CategoryCardProps {
   category: Category;
+  /**
+   * Productos activos de esta categoría según la fuente que cargó la página
+   * (Supabase o semilla). Si no llega, se calcula sobre la semilla: mantiene
+   * el comportamiento anterior para cualquier otro uso del componente.
+   */
+  count?: number;
 }
 
-export default function CategoryCard({ category }: CategoryCardProps) {
+export default function CategoryCard({ category, count }: CategoryCardProps) {
+  const productCount = count ?? getCategoryProductCount(category.id);
   return (
     <Link
       href={`/perfumes?categoria=${category.slug}`}
@@ -24,7 +31,7 @@ export default function CategoryCard({ category }: CategoryCardProps) {
 
       <div className="absolute bottom-0 left-0 right-0 p-6">
         <p className="text-[10px] tracking-widest2 uppercase text-gold-400 mb-2">
-          {getCategoryProductCount(category.id)} productos
+          {productCount} productos
         </p>
         <h3 className="font-serif text-2xl text-white mb-2">{category.name}</h3>
         <p className="text-sm text-white/70 line-clamp-2">{category.description}</p>

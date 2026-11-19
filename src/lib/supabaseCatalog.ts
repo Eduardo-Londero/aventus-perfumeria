@@ -15,6 +15,7 @@
  */
 
 import type { Brand, Category, Gender, Product } from "@/types";
+import type { HomepageSection } from "@/types/cms";
 import {
   brandRowToBrand,
   categoryRowToCategory,
@@ -26,6 +27,10 @@ import {
   type ProductCategoryRow,
   type ProductRow,
 } from "@/lib/catalogMapper";
+import {
+  homeSectionRowToHomepageSection,
+  type HomeSectionRow,
+} from "@/lib/homeSectionsMigration";
 import { getSupabase } from "@/lib/supabaseClient";
 
 export interface CatalogPayload {
@@ -33,6 +38,12 @@ export interface CatalogPayload {
   categories: Category[];
   brands: Brand[];
   products: Product[];
+  /**
+   * Secciones del home (Fase D). Opcional en el tipo para que un remoto sin
+   * la tabla (o un mock de tests) no rompa la hidratación: el driver trata
+   * `undefined` como "sin secciones".
+   */
+  homeSections?: HomepageSection[];
 }
 
 interface QueryResult<T> {
@@ -57,22 +68,29 @@ function unwrap<T>(result: QueryResult<T>, table: string): T[] {
 export async function fetchCatalog(): Promise<CatalogPayload> {
   const supabase = getSupabase();
 
-  const [genders, categories, brands, products, links] = await Promise.all([
-    supabase.from("genders").select("id, name, is_active"),
-    supabase
-      .from("categories")
-      .select("id, slug, name, description, image_url, order, is_active"),
-    supabase
-      .from("brands")
-      .select("id, slug, name, description, image_url, order, is_active"),
-    supabase.from("products").select(
-      `id, slug, name, brand_id, gender_id, description, long_description,
+  const [genders, categories, brands, products, links, sections] =
+    await Promise.all([
+      supabase.from("genders").select("id, name, is_active"),
+      supabase
+        .from("categories")
+        .select("id, slug, name, description, image_url, order, is_active"),
+      supabase
+        .from("brands")
+        .select("id, slug, name, description, image_url, order, is_active"),
+      supabase.from("products").select(
+        `id, slug, name, brand_id, gender_id, description, long_description,
        price_cents, previous_price_cents, discount, images, size, concentration,
        olfactory_family, notes_top, notes_heart, notes_base, stock, featured,
        is_active, is_on_sale, is_new, sold_count, created_at`
-    ),
-    supabase.from("product_categories").select("product_id, category_id"),
-  ]);
+      ),
+      supabase.from("product_categories").select("product_id, category_id"),
+      // Fase D: CMS del home. Si falla (tabla ausente / permisos) NO se tumba
+      // el catálogo: se registra el error y la página cae a sus secciones semilla.
+      supabase
+        .from("home_sections")
+        .select("id, type, title, is_active, order, content")
+        .order("order", { ascending: true }),
+    ]);
 
   const genderRows = unwrap<GenderRow>(
     genders as QueryResult<GenderRow>,
@@ -92,10 +110,26 @@ export async function fetchCatalog(): Promise<CatalogPayload> {
     "product_categories"
   );
 
+  // Secciones del home: degradan a lista vacía (el consumidor usa la semilla)
+  // para que un problema del CMS nunca deje la tienda sin catálogo.
+  const sectionResult = sections as QueryResult<HomeSectionRow>;
+  let homeSections: HomepageSection[] = [];
+  if (sectionResult.error) {
+    console.error(
+      "[supabaseCatalog] no se pudieron leer las secciones del home:",
+      sectionResult.error.message
+    );
+  } else {
+    homeSections = (sectionResult.data ?? []).map(
+      homeSectionRowToHomepageSection
+    );
+  }
+
   return {
     genders: genderRows.map(genderRowToGender),
     categories: categoryRows.map(categoryRowToCategory),
     brands: brandRows.map(brandRowToBrand),
     products: rowsToProducts(productRows, linkRows),
+    homeSections,
   };
 }

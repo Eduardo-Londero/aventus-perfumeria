@@ -1,11 +1,13 @@
 /**
- * Preparación de la migración del CMS de Home — Fase E (solo local, sin escrituras)
- * ============================================================================
- * El esquema Supabase 0001 NO contiene ninguna tabla de home/CMS/banners
- * (grep en supabase/migrations y backups: 0 coincidencias). Por tanto la
- * importación de secciones del home está bloqueada por diseño hasta que se
- * decida y cree la tabla. Este módulo deja preparadas la validación local y
- * la forma (propuesta, no ejecutada) de las filas para ese futuro paso.
+ * Migración del CMS de Home — Fase D (tabla `home_sections`)
+ * ===========================================================
+ * La tabla `home_sections` EXISTE desde la migración
+ * `supabase/migrations/20261118_0007_home_sections.sql` (aplicada al proyecto
+ * `xpphnsozqnajfxjqvtci`). Este módulo concentra la parte PURA de la fase: la
+ * lista blanca de tipos, la validación y el mapeo app ↔ fila, que usan
+ *   - el servidor: src/lib/server/catalogWriteService.ts (alta/modificación
+ *     por fila) y src/lib/server/homeSectionsService.ts (reemplazo completo);
+ *   - el cargador:  src/lib/supabaseCatalog.ts (lectura del catálogo).
  *
  * Solo se usan los campos que REALMENTE existen en HomepageSection
  * (src/types/cms.ts): id, type, title, isActive, order, content?. No se
@@ -35,8 +37,7 @@ export function isHomeSectionType(value: unknown): value is HomeSectionType {
   );
 }
 
-// Forma PROPUESTA para la tabla `home_sections` (aún inexistente).
-// DDL propuesto (NO ejecutado): ver informe Fase E §6.
+// Forma de la tabla `home_sections` (creada en 20261118_0007_home_sections.sql).
 export interface HomeSectionRow {
   id: string;
   type: HomeSectionType;
@@ -118,6 +119,23 @@ export function toHomeSectionRow(section: HomepageSection): HomeSectionRow {
     is_active: section.isActive,
     order: section.order,
     content: section.content ?? null,
+  };
+}
+
+/**
+ * Fila de `home_sections` → modelo de la app (inverso de
+ * `toHomeSectionRow`). Los campos desconocidos de `content` pasan tal cual.
+ */
+export function homeSectionRowToHomepageSection(
+  row: HomeSectionRow
+): HomepageSection {
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    isActive: row.is_active,
+    order: row.order,
+    ...(row.content ? { content: row.content } : {}),
   };
 }
 

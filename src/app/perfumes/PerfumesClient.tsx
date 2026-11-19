@@ -3,7 +3,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  products,
   filterProducts,
   sortProducts,
   getUniqueBrands,
@@ -11,18 +10,26 @@ import {
   getUniqueOlfactoryFamilies,
   getPriceRange,
 } from "@/data/products";
-import { FilterState, SortOption } from "@/types";
+import { FilterState, Product, SortOption } from "@/types";
 import { formatPrice } from "@/config/site";
 import SearchBar from "@/components/products/SearchBar";
 import ProductGrid from "@/components/products/ProductGrid";
 
-export const dynamic = "force-dynamic";
+/**
+ * Catálogo a mostrar: lo carga la Server Component (src/app/perfumes/page.tsx)
+ * desde Supabase y llega como prop. Así el HTML prerenderizado ya trae los
+ * productos REALES (SEO y primer pintado) sin esperar hidratación en el
+ * navegador ni pisar la semilla.
+ */
+interface PerfumesClientProps {
+  products: Product[];
+}
 
-const initialFilters: FilterState = {
+const baseFilters: FilterState = {
   search: "",
   categories: [],
   brands: [],
-  priceRange: getPriceRange(),
+  priceRange: [0, 0],
   sizes: [],
   gender: [],
   olfactoryFamily: [],
@@ -32,36 +39,50 @@ const initialFilters: FilterState = {
   sortBy: "featured",
 };
 
-export default function PerfumesClient() {
+/** Filtros por defecto calculados sobre el catálogo que llegó del servidor. */
+function buildInitialFilters(products: Product[]): FilterState {
+  return { ...baseFilters, priceRange: getPriceRange(products) };
+}
+
+export default function PerfumesClient({ products }: PerfumesClientProps) {
   const searchParams = useSearchParams();
   // El parámetro canónico es "categoria". Se acepta "category" como alias legado
   // para que enlaces antiguos no fallen en silencio mostrando todo el catálogo.
   const categoriaParam =
     searchParams.get("categoria") || searchParams.get("category");
 
-  const [filters, setFilters] = useState<FilterState>({
-    ...initialFilters,
+  const [filters, setFilters] = useState<FilterState>(() => ({
+    ...buildInitialFilters(products),
     categories: categoriaParam ? [categoriaParam] : [],
-  });
+  }));
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
 
-  const brands = getUniqueBrands();
-  const sizes = getUniqueSizes();
-  const olfactoryFamilies = getUniqueOlfactoryFamilies();
-  const [minPrice, maxPrice] = getPriceRange();
+  const brands = useMemo(() => getUniqueBrands(products), [products]);
+  const sizes = useMemo(() => getUniqueSizes(products), [products]);
+  const olfactoryFamilies = useMemo(
+    () => getUniqueOlfactoryFamilies(products),
+    [products]
+  );
+  const [minPrice, maxPrice] = useMemo(
+    () => getPriceRange(products),
+    [products]
+  );
 
   const filteredProducts = useMemo(() => {
-    let result = filterProducts({
-      categories: filters.categories,
-      brands: filters.brands,
-      genders: filters.gender,
-      sizes: filters.sizes,
-      olfactoryFamilies: filters.olfactoryFamily,
-      onlyOffers: filters.onlyOffers,
-      onlyNew: filters.onlyNew,
-      onlyInStock: filters.onlyInStock,
-      priceRange: filters.priceRange,
-    });
+    let result = filterProducts(
+      {
+        categories: filters.categories,
+        brands: filters.brands,
+        genders: filters.gender,
+        sizes: filters.sizes,
+        olfactoryFamilies: filters.olfactoryFamily,
+        onlyOffers: filters.onlyOffers,
+        onlyNew: filters.onlyNew,
+        onlyInStock: filters.onlyInStock,
+        priceRange: filters.priceRange,
+      },
+      products
+    );
 
     if (filters.search) {
       const q = filters.search.toLowerCase();
@@ -74,7 +95,7 @@ export default function PerfumesClient() {
     }
 
     return sortProducts(result, filters.sortBy);
-  }, [filters]);
+  }, [filters, products]);
 
   const updateFilter = useCallback(
     <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
@@ -100,8 +121,8 @@ export default function PerfumesClient() {
   );
 
   const resetFilters = useCallback(() => {
-    setFilters(initialFilters);
-  }, []);
+    setFilters(buildInitialFilters(products));
+  }, [products]);
 
   const activeFiltersCount =
     filters.categories.length +

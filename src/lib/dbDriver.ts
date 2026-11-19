@@ -9,9 +9,10 @@
  *
  *   - local     → localStorage, comportamiento actual idéntico (por defecto).
  *   - supabase  → espejo en memoria hidratado de forma asíncrona al arrancar
- *                 (Fase C-1: lectura del catálogo). Las ESCRITURAS de catálogo
- *                 no pasan por acá: las hace db.ts con write-through optimista
- *                 hacia /api/data/* (Fase C-2); pedidos y home siguen bloqueados.
+ *                 (Fase C-1: lectura del catálogo + Fase D: secciones del home).
+ *                 Las ESCRITURAS no pasan por acá: las hace db.ts con
+ *                 write-through optimista hacia /api/data/* (Fase C-2/C-2b).
+ *                 Los PEDIDOS siguen bloqueados (F3: ordersRemote).
  *
  * Semántica de "listo":
  *   - local: siempre (whenReady() ya resuelto).
@@ -80,9 +81,10 @@ export type CatalogLoader = () => Promise<{
   categories: unknown[];
   brands: unknown[];
   products: unknown[];
+  homeSections?: unknown[];
 }>;
 
-/** Claves de colección que este driver puede hidratar (todas menos pedidos/CMS). */
+/** Claves de colección que este driver puede hidratar (todas menos pedidos). */
 const HYDRATABLE_KEYS: Array<{
   key: string;
   pick: (payload: Awaited<ReturnType<CatalogLoader>>) => unknown[];
@@ -91,6 +93,8 @@ const HYDRATABLE_KEYS: Array<{
   { key: "aventus-db-categories", pick: (p) => p.categories },
   { key: "aventus-db-brands", pick: (p) => p.brands },
   { key: "aventus-db-products", pick: (p) => p.products },
+  // Fase D: el CMS del home. `?? []` para payloads/mocks sin la colección.
+  { key: "aventus-db-home-sections", pick: (p) => p.homeSections ?? [] },
 ];
 
 function deepCopy<T>(value: T): T {

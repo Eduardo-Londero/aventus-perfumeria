@@ -35,6 +35,7 @@ import {
   CATALOG_ENTITY_NOUN,
   type CatalogEntity,
 } from "@/lib/catalogEntities";
+import { isHomeSectionType, type HomeSectionRow } from "@/lib/homeSectionsMigration";
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import {
   ConflictError,
@@ -233,6 +234,40 @@ export function brandToRow(value: unknown): BrandRow {
 }
 
 /**
+ * Sección del home app → fila (`home_sections`, Fase D).
+ * `content` es jsonb: objeto o null. Cualquier otra cosa es 400, nunca llega
+ * a la base.
+ */
+export function homeSectionToRow(value: unknown): HomeSectionRow {
+  const body = asRecord(value);
+  const type = reqText(body.type, "type", MAX_SHORT);
+  if (!isHomeSectionType(type)) {
+    throw new ValidationError(
+      `El campo "type" no corresponde a una sección del home: "${type}".`
+    );
+  }
+  const content = body.content;
+  if (
+    content !== undefined &&
+    content !== null &&
+    (typeof content !== "object" || Array.isArray(content))
+  ) {
+    throw new ValidationError(
+      'El campo "content" debe ser un objeto JSON o null.'
+    );
+  }
+
+  return {
+    id: reqText(body.id, "id", MAX_ID),
+    type,
+    title: reqText(body.title, "title"),
+    is_active: optBool(body.isActive, "isActive", true),
+    order: optInt(body.order, "order", { min: 0, fallback: 0 }),
+    content: (content as Record<string, unknown> | null) ?? null,
+  };
+}
+
+/**
  * Producto app → fila. `created_at` solo se usa en INSERT: en UPDATE se
  * elimina (ver `productUpdateRow`) para conservar la fecha de alta original.
  */
@@ -415,6 +450,15 @@ export async function createEntity(
     return { id: row.id };
   }
 
+  if (entity === "home_sections") {
+    const row = homeSectionToRow(body);
+    const { error } = await getSupabaseAdmin()
+      .from("home_sections")
+      .insert(row);
+    if (error) throw mapPostgrestError(error, { entity, action: "create" });
+    return { id: row.id };
+  }
+
   const row = genderToRow(body);
   const { error } = await getSupabaseAdmin().from("genders").insert(row);
   if (error) throw mapPostgrestError(error, { entity, action: "create" });
@@ -550,6 +594,25 @@ export async function updateEntity(
     return { id };
   }
 
+  if (entity === "home_sections") {
+    const row = homeSectionToRow(body);
+    if (row.id !== id) {
+      throw new ValidationError(
+        `El ID del cuerpo ("${row.id}") no coincide con el de la URL ("${id}").`
+      );
+    }
+    const { data, error } = await getSupabaseAdmin()
+      .from("home_sections")
+      .update(row)
+      .eq("id", id)
+      .select("id");
+    if (error) throw mapPostgrestError(error, { entity, action: "update" });
+    if (!data || data.length === 0) {
+      throw new NotFoundError(`No existe una sección del home con ID "${id}".`);
+    }
+    return { id };
+  }
+
   const row = genderToRow(body);
   if (row.id !== id) {
     throw new ValidationError(
@@ -619,7 +682,15 @@ export async function deleteEntity(
   }
   if (!data || data.length === 0) {
     throw new NotFoundError(
-      `No existe ${entity === "brands" ? "una marca" : entity === "categories" ? "una categoría" : "un género"} con ID "${id}".`
+      `No existe ${
+        entity === "brands"
+          ? "una marca"
+          : entity === "categories"
+            ? "una categoría"
+            : entity === "home_sections"
+              ? "una sección del home"
+              : "un género"
+      } con ID "${id}".`
     );
   }
   return { id };

@@ -49,6 +49,7 @@ function payload(overrides: Partial<Record<string, unknown[]>> = {}) {
     categories: overrides.categories ?? [],
     brands: overrides.brands ?? [],
     products: overrides.products ?? [],
+    homeSections: overrides.homeSections ?? [],
   };
 }
 
@@ -192,8 +193,8 @@ describe("backend supabase — lecturas síncronas", () => {
   });
 });
 
-describe("backend supabase — escrituras aún bloqueadas (pedidos y home)", () => {
-  it("pedidos y secciones del home fallan en voz alta con mensaje accionable", async () => {
+describe("backend supabase — pedidos bloqueados, home escrito (Fase D)", () => {
+  it("los pedidos siguen fallando en voz alta con mensaje accionable", async () => {
     catalogMock.fetchCatalog.mockResolvedValue(payload());
     const { db } = await importDbAsSupabase();
     db.initializeDatabase();
@@ -205,9 +206,62 @@ describe("backend supabase — escrituras aún bloqueadas (pedidos y home)", () 
     expect(() => db.dbOrders.updateStatus("AV-1", "confirmado")).toThrow(
       esperado
     );
-    expect(() => db.dbHomeSections.save([])).toThrow(esperado);
-    // Fase C-2: el mensaje aclara que el catálogo SÍ escribe.
-    expect(() => db.dbHomeSections.save([])).toThrow(/catálogo sí escribe/);
+    // Fase C-2: el mensaje aclara que el catálogo y el CMS sí escriben.
+    expect(() => db.dbOrders.create({} as never)).toThrow(/catálogo sí escribe/);
+  });
+
+  it("dbHomeSections.save aplica en memoria y encola el PUT de la colección", async () => {
+    catalogMock.fetchCatalog.mockResolvedValue(payload());
+    const fetchMock = stubFetch();
+    const { db, dataSync } = await importDbAsSupabase();
+    db.initializeDatabase();
+    await db.whenReady();
+
+    const next = db
+      .dbHomeSections.getDefaultSections()
+      .map((section) =>
+        section.id === "1" ? { ...section, isActive: false } : section
+      );
+
+    db.dbHomeSections.save(next);
+    // Optimista: el panel ve el cambio sin esperar la red.
+    expect(db.dbHomeSections.getAll()).toEqual(next);
+
+    await dataSync.whenWritesSettled();
+
+    const call = fetchMock.mock.calls.find(
+      ([url]) => String(url) === "/api/data/home_sections"
+    );
+    expect(call).toBeTruthy();
+    const init = (call?.[1] ?? {}) as RequestInit;
+    expect(init.method).toBe("PUT");
+    const body = JSON.parse(String(init.body)) as {
+      sections: Array<{ id: string }>;
+    };
+    expect(body.sections).toHaveLength(next.length);
+    expect(body.sections.map((s) => s.id)).toEqual(next.map((s) => s.id));
+  });
+
+  it("si el servidor rechaza el PUT, se restaura la lista anterior y se notifica", async () => {
+    catalogMock.fetchCatalog.mockResolvedValue(payload());
+    const fetchMock = stubFetch(
+      () =>
+        new Response(
+          JSON.stringify({ code: "VALIDATION", message: "Sección inválida." }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        )
+    );
+    const { db, dataSync } = await importDbAsSupabase();
+    db.initializeDatabase();
+    await db.whenReady();
+
+    const antes = db.dbHomeSections.getAll();
+    db.dbHomeSections.save([]);
+    await dataSync.whenWritesSettled();
+
+    expect(db.dbHomeSections.getAll()).toEqual(antes);
+    expect(dataSync.getLastWriteError()).toBe("Sección inválida.");
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it("los generadores y lecturas NO están bloqueados", async () => {

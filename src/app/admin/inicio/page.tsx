@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useToast } from "@/context/ToastContext";
 import { dbHomeSections, HomepageSection } from "@/lib/db";
+import { useCatalogSync } from "@/hooks/useCatalogSync";
 
 export default function AdminInicioPage() {
   const { showToast } = useToast();
@@ -10,22 +11,17 @@ export default function AdminInicioPage() {
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Fase D: las secciones viven en Supabase (home_sections). Este hook relee
+  // cuando termina la hidratación y, si el servidor rechaza la escritura,
+  // db.ts ya revirtió en memoria: acá se vuelve a leer y se avisa con toast.
+  useCatalogSync(() => setSections(dbHomeSections.getAll()));
+
   useEffect(() => {
-    const loaded = dbHomeSections.getAll();
-    if (loaded.length === 0) {
-      const defaults = dbHomeSections.getDefaultSections();
-      try {
-        dbHomeSections.save(defaults);
-      } catch (error) {
-        // Con `NEXT_PUBLIC_DATA_BACKEND=supabase` el CMS del home todavía no
-        // tiene tabla (Fase D): la página queda usable con las secciones en
-        // memoria en lugar de tumbar el panel al montar.
-        console.error("[admin/inicio] no se pudieron persistir las secciones:", error);
-      }
-      setSections(defaults);
-    } else {
-      setSections(loaded);
-    }
+    // Antes de que llegue la hidratación (o si la base vinía vacía) el panel
+    // muestra las secciones por defecto en vez de una lista en blanco.
+    setSections((prev) =>
+      prev.length > 0 ? prev : dbHomeSections.getDefaultSections()
+    );
     setIsLoading(false);
   }, []);
 
@@ -66,17 +62,12 @@ export default function AdminInicioPage() {
 
   const handleApplyChanges = () => {
     if (!hasPendingChanges) return;
-    try {
-      dbHomeSections.save(sections);
-      setHasPendingChanges(false);
-      showToast("Cambios aplicados correctamente", "success");
-    } catch (error) {
-      // Backend remoto sin tabla de CMS aún (Fase D): aviso accionable.
-      showToast(
-        error instanceof Error ? error.message : "No se pudieron aplicar los cambios",
-        "error"
-      );
-    }
+    // Optimista, igual que Productos/Marcas: se aplica en memoria ya y se
+    // encola el PUT /api/data/home_sections (la cola es la misma del catálogo).
+    // Si el servidor rechaza, useCatalogSync revuelve la lista y avisa con toast.
+    dbHomeSections.save(sections);
+    setHasPendingChanges(false);
+    showToast("Cambios aplicados correctamente", "success");
   };
 
   if (isLoading) {

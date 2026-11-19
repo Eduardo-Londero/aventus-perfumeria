@@ -1,24 +1,42 @@
 import type { Metadata } from "next";
 
-export const dynamic = "force-dynamic";
+// ISR 30 s: los cambios de marca/producto del panel se reflejan en ≤ 30 s.
+export const revalidate = 30;
 import { notFound } from "next/navigation";
 import Image from "next/image";
-import {
-  getBrandBySlug,
-  getActiveBrands,
-  getProductsByBrand,
-} from "@/lib/seed";
+import { getStorefront } from "@/lib/server/storefront";
 import ProductGrid from "@/components/products/ProductGrid";
 
 interface BrandPageProps {
   params: Promise<{ slug: string }>;
 }
 
+/**
+ * Slugs a prerenderizar: sin esto Next ignora `revalidate` en el segmento y
+ * cada visita a una marca consulta la base sin cache (ver comentario equivalente
+ * en src/app/perfumes/[slug]/page.tsx).
+ */
+export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
+  try {
+    const { brands } = await getStorefront();
+    return brands
+      .filter((brand) => brand.isActive)
+      .map((brand) => ({ slug: brand.slug }));
+  } catch (error) {
+    console.error(
+      "[marcas/[slug]] generateStaticParams sin catálogo:",
+      error instanceof Error ? error.message : String(error)
+    );
+    return [];
+  }
+}
+
 export async function generateMetadata({
   params,
 }: BrandPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const brand = getBrandBySlug(slug);
+  const { brands } = await getStorefront();
+  const brand = brands.find((b) => b.slug === slug);
 
   if (!brand) {
     return {
@@ -39,14 +57,20 @@ export async function generateMetadata({
 
 export default async function BrandPage({ params }: BrandPageProps) {
   const { slug } = await params;
-  const brand = getBrandBySlug(slug);
+  const { products, brands } = await getStorefront();
+  const brand = brands.find((b) => b.slug === slug);
 
   if (!brand) {
     notFound();
   }
 
-  // Obtener productos de la marca desde los datos iniciales compartidos
-  const brandProducts = getProductsByBrand(brand.id).filter((p) => p.isActive);
+  // Productos ACTIVOS de la marca, desde la misma fuente que el resto de la tienda
+  const brandProducts = products.filter(
+    (p) => p.isActive && p.brand === brand.id
+  );
+  const otherBrands = brands
+    .filter((b) => b.isActive && b.slug !== slug)
+    .slice(0, 8);
 
   return (
     <div className="bg-cream-50 min-h-screen">
@@ -103,9 +127,7 @@ export default async function BrandPage({ params }: BrandPageProps) {
           <p className="section-subtitle mb-3">Seguir explorando</p>
           <h2 className="section-title mb-10">Otras marcas</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {getActiveBrands()
-              .filter((b) => b.slug !== slug)
-              .slice(0, 8)
+            {otherBrands
               .map((b) => (
                 <a
                   key={b.id}

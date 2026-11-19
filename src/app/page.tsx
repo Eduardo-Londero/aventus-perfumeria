@@ -1,27 +1,31 @@
 import Link from "next/link";
 import Image from "next/image";
 import {
-  getActiveCategories,
-  getFeaturedProducts,
-  getNewProducts,
-  getOnSaleProducts,
-  getActiveHomeSections,
-} from "@/lib/seed";
+  countProductsByCategory,
+  getStorefront,
+  selectFeatured,
+  selectNew,
+  selectOnSale,
+} from "@/lib/server/storefront";
 import { faqs } from "@/data/faqs";
 import { siteConfig, generateWhatsAppUrl } from "@/config/site";
 import CategoryCard from "@/components/products/CategoryCard";
 import ProductGrid from "@/components/products/ProductGrid";
 import Accordion from "@/components/ui/Accordion";
 
-export default function HomePage() {
-  // Datos iniciales compartidos (seguros para el servidor, sin localStorage).
-  // El orden y activación de secciones se mantienen en seedHomeSections,
-  // alineados con los defaults de dbHomeSections.getDefaultSections().
-  const activeSections = getActiveHomeSections();
-  const featuredProducts = getFeaturedProducts().slice(0, 8);
-  const newProducts = getNewProducts().slice(0, 8);
-  const saleProducts = getOnSaleProducts().slice(0, 8);
-  const categories = getActiveCategories();
+// ISR: el home se re-renderiza contra Supabase cada 30 segundos, así que lo
+// que se ordene/desactive/edite en el panel se ve sin redeploy.
+// Fuente única: src/lib/server/storefront.ts (con degradación a semilla).
+export const revalidate = 30;
+
+export default async function HomePage() {
+  // Datos públicos: catálogo + secciones ACTIVAS tal como están en la base.
+  // El orden y la activación los administra el panel en Inicio (home_sections).
+  const { products, categories, brands, sections } = await getStorefront();
+  const activeSections = sections;
+  const featuredProducts = selectFeatured(products).slice(0, 8);
+  const newProducts = selectNew(products).slice(0, 8);
+  const saleProducts = selectOnSale(products).slice(0, 8);
   const faqItems = faqs.slice(0, 5).map((f) => ({
     question: f.question,
     answer: f.answer,
@@ -110,7 +114,11 @@ export default function HomePage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {categories.map((category) => (
-                  <CategoryCard key={category.id} category={category} />
+                  <CategoryCard
+                    key={category.id}
+                    category={category}
+                    count={countProductsByCategory(products, category.id)}
+                  />
                 ))}
               </div>
             </div>
@@ -228,7 +236,20 @@ export default function HomePage() {
                 <h2 className="section-title">Nuestras marcas</h2>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                {/* Las marcas se muestran desde la base de datos */}
+                {brands
+                  .filter((brand) => brand.isActive)
+                  .sort((a, b) => a.order - b.order)
+                  .map((brand) => (
+                    <Link
+                      key={brand.id}
+                      href={`/marcas/${brand.slug}`}
+                      className="group flex items-center justify-center gap-3 p-4 bg-white border border-charcoal-100 hover:border-gold-500 transition-colors"
+                    >
+                      <span className="font-serif text-lg text-charcoal-900 group-hover:text-gold-700 transition-colors">
+                        {brand.name}
+                      </span>
+                    </Link>
+                  ))}
               </div>
             </div>
           </section>

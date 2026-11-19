@@ -18,7 +18,11 @@ import {
   requireSupabaseBackend,
 } from "@/lib/server/adminGuard";
 import { deleteEntity, updateEntity } from "@/lib/server/catalogWriteService";
-import { isCatalogEntity, type CatalogEntity } from "@/lib/catalogEntities";
+import {
+  CATALOG_ENTITIES,
+  isCatalogEntity,
+  type CatalogEntity,
+} from "@/lib/catalogEntities";
 import {
   InvalidBodyError,
   InvalidEntityError,
@@ -45,7 +49,7 @@ async function resolveTarget(
   if (!isCatalogEntity(entity)) {
     return errorResponse(
       new InvalidEntityError(
-        `Entidad desconocida "${entity}". Las válidas son: products, categories, brands, genders.`
+        `Entidad desconocida "${entity}". Las válidas son: ${CATALOG_ENTITIES.join(", ")}.`
       )
     );
   }

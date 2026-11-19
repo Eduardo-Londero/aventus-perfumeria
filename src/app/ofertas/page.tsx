@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-
-export const dynamic = "force-dynamic";
 import Link from "next/link";
-import { getOnSaleProducts } from "@/lib/seed";
+import { getStorefront, selectOnSale } from "@/lib/server/storefront";
 import ProductGrid from "@/components/products/ProductGrid";
+
+// ISR 30 s: las ofertas del panel se ven sin redeploy (ver storefront.ts).
+export const revalidate = 30;
 
 export const metadata: Metadata = {
   title: "Ofertas | Aventus Perfumería",
@@ -16,8 +17,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function OfertasPage() {
-  const saleProducts = getOnSaleProducts();
+export default async function OfertasPage() {
+  const { products } = await getStorefront();
+  const saleProducts = selectOnSale(products);
 
   return (
     <div className="bg-cream-50 min-h-screen">

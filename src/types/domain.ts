@@ -16,7 +16,8 @@ export type PaymentStatus =
   | "rejected"
   | "refunded"
   | "expired"
-  | "discrepancy";
+  | "discrepancy"
+  | "partial";
 
 /** Estados logísticos del pedido (eje operación). */
 export type FulfillmentStatus =
@@ -27,8 +28,28 @@ export type FulfillmentStatus =
   | "delivered"
   | "cancelled";
 
+export type ShippingStatus =
+  | "sin_preparar"
+  | "preparando"
+  | "despachado"
+  | "en_transito"
+  | "entregado"
+  | "problema";
+
 export type DeliveryMethod = "retiro" | "envio";
 export type PaymentMethod = "transferencia" | "efectivo";
+
+export interface OrderActivityLog {
+  id: string;
+  orderId: string;
+  actor: string;
+  eventType: string;
+  field: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
 export type UserRole = "customer" | "admin";
 
 /** Perfil — espejo de public.profiles. */
@@ -45,22 +66,41 @@ export interface Profile {
 export interface Order {
   id: string;
   orderNumber: string;
-  userId: string;
+  userId: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  customerPhone: string | null;
   deliveryMethod: DeliveryMethod;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   fulfillmentStatus: FulfillmentStatus;
   subtotalCents: number;
   shippingCents: number;
+  discountCents: number;
   totalCents: number;
   shipStreet: string | null;
   shipCity: string | null;
+  shipProvince: string | null;
   shipPostalCode: string | null;
   shipRecipientName: string | null;
   shipRecipientPhone: string | null;
   reservationExpiresAt: string | null;
   stockReleased: boolean;
   paymentReference: string | null;
+  paymentAmountPaidCents: number;
+  paymentPaidAt: string | null;
+  paymentTransactionRef: string | null;
+  paymentNotes: string | null;
+  paymentUpdatedBy: string | null;
+  paymentUpdatedAt: string | null;
+  shippingCarrier: string | null;
+  shippingTrackingCode: string | null;
+  shippingDispatchedAt: string | null;
+  shippingStatus: ShippingStatus;
+  shippingNotes: string | null;
+  internalNotes: string | null;
+  customerNotes: string | null;
+  whatsappReference: string | null;
   createdAt: string;
   updatedAt: string;
 }

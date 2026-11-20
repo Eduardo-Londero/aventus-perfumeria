@@ -97,6 +97,7 @@ export interface Order {
     email: string;
     address?: string;
     city?: string;
+    province?: string;
     postalCode?: string;
   };
   items: OrderItemSnapshot[];
@@ -118,6 +119,25 @@ export interface Order {
    * pedidos antiguos sin este campo nunca reservaron y no lo liberan.
    */
   stockReserved?: boolean;
+  // Campos extendidos (gestión profesional de pedidos)
+  customerProvince?: string;
+  internalNotes?: string;
+  customerNotes?: string;
+  discount?: number;
+  paymentStatus?: string;
+  paymentAmountPaid?: number;
+  paymentPaidAt?: string;
+  paymentTransactionRef?: string;
+  paymentNotes?: string;
+  paymentUpdatedBy?: string;
+  paymentUpdatedAt?: string;
+  shippingCarrier?: string;
+  shippingTrackingCode?: string;
+  shippingDispatchedAt?: string;
+  shippingStatus?: string;
+  shippingNotes?: string;
+  whatsappReference?: string;
+  updatedAt?: string;
 }
 
 export interface FilterState {

@@ -1,18 +1,8 @@
 /**
- * GET /api/admin/orders — listado completo de pedidos (panel)
- * ============================================================
- * Única vía de lectura de TODOS los pedidos para el administrador:
- *
- *  - Guardas, en orden: backend activo (supabase) → cookie de sesión del
- *    panel. El administrador NO tiene sesión de Supabase Auth, por lo que
- *    las políticas RLS (`orders_owner_read`) no le servirían: esta ruta usa
- *    la `service_role` (BYPASSRLS) y por eso MISMO la cookie es la
- *    autorización.
- *  - El email del cliente no está en `orders` (vive en auth.users): se
- *    resuelve con la API admin de GoTrue y se adjunta al resultado. Si no
- *    se puede resolver, el pedido igual se devuelve (email vacío).
- *
- * Respuesta: `{ ok: true, orders: Order[] }` (dominio, importes en pesos).
+ * GET/POST /api/admin/orders — listado (paginado/filtrado) y creación manual
+ * ===========================================================================
+ * Única vía de lectura/escritura de TODOS los pedidos para el administrador.
+ * Usa service_role (BYPASSRLS); la cookie del panel es la autorización.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -21,58 +11,15 @@ import {
   requireAdmin,
   requireSupabaseBackend,
 } from "@/lib/server/adminGuard";
-import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import {
-  mapOrderRow,
-  type OrderHistoryRow,
-  type OrderItemRow,
-  type OrderRow,
-} from "@/lib/orderMapping";
-import type { Order } from "@/types";
-import type { SupabaseClient } from "@supabase/supabase-js";
+  fetchOrders,
+  fetchOrderSummary,
+  createManualOrder,
+  type OrderFilters,
+  type ManualOrderInput,
+} from "@/lib/server/ordersService";
 
 export const dynamic = "force-dynamic";
-
-type OrderWithRelations = OrderRow & {
-  order_items?: OrderItemRow[];
-  order_status_history?: OrderHistoryRow[];
-  user_id: string;
-};
-
-/**
- * Mapa user_id → email usando la API admin de GoTrue (pagina de a 100 y
- * corta en cuanto todos los pedidos tienen email o se acaban los usuarios).
- * Nunca tira: sin email la lista sigue siendo útil.
- */
-async function fetchUserEmails(
-  admin: SupabaseClient,
-  rows: OrderWithRelations[]
-): Promise<Map<string, string>> {
-  const emails = new Map<string, string>();
-  const needed = new Set(rows.map((row) => row.user_id));
-  if (needed.size === 0) return emails;
-
-  try {
-    const perPage = 100;
-    let page = 1;
-    while (emails.size < needed.size && page <= 100) {
-      const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-      if (error) break;
-      const users = data?.users ?? [];
-      for (const user of users) {
-        if (user.email && needed.has(user.id)) {
-          emails.set(user.id, user.email);
-        }
-      }
-      if (users.length < perPage) break; // última página
-      page += 1;
-    }
-  } catch {
-    // Sin emails: se devuelve la lista igual (el panel muestra vacío).
-  }
-
-  return emails;
-}
 
 export async function GET(req: NextRequest) {
   const backend = requireSupabaseBackend();
@@ -81,33 +28,60 @@ export async function GET(req: NextRequest) {
   const guard = await requireAdmin(req);
   if (guard instanceof NextResponse) return guard;
 
+  const url = new URL(req.url);
+  const summary = url.searchParams.get("summary") === "1";
+
   try {
-    const admin = getSupabaseAdmin();
-
-    const { data, error } = await admin
-      .from("orders")
-      .select("*, order_items(*), order_status_history(*)")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: "INTERNAL",
-          message: `No se pudieron cargar los pedidos: ${error.message}`,
-        },
-        { status: 500 }
-      );
+    if (summary) {
+      const dateFrom = url.searchParams.get("dateFrom") || undefined;
+      const dateTo = url.searchParams.get("dateTo") || undefined;
+      const data = await fetchOrderSummary(dateFrom, dateTo);
+      return NextResponse.json({ ok: true, ...data });
     }
 
-    const rows = (data ?? []) as unknown as OrderWithRelations[];
-    const emails = await fetchUserEmails(admin, rows);
+    const filters: OrderFilters = {
+      search: url.searchParams.get("search") || undefined,
+      paymentStatus: url.searchParams.get("paymentStatus") || undefined,
+      shippingStatus: url.searchParams.get("shippingStatus") || undefined,
+      fulfillmentStatus: url.searchParams.get("fulfillmentStatus") || undefined,
+      dateFrom: url.searchParams.get("dateFrom") || undefined,
+      dateTo: url.searchParams.get("dateTo") || undefined,
+      sort: (url.searchParams.get("sort") as any) || "created_at",
+      order: (url.searchParams.get("order") as any) || "desc",
+      page: Number(url.searchParams.get("page") || "1"),
+      pageSize: Number(url.searchParams.get("pageSize") || "20"),
+    };
 
-    const orders: Order[] = rows.map((row) =>
-      mapOrderRow(row, emails.get(row.user_id) ?? "")
+    const result = await fetchOrders(filters);
+    return NextResponse.json({ ok: true, orders: result.orders, total: result.total });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const backend = requireSupabaseBackend();
+  if (backend) return backend;
+
+  const guard = await requireAdmin(req);
+  if (guard instanceof NextResponse) return guard;
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { ok: false, code: "INVALID_BODY", message: "Cuerpo inválido." },
+      { status: 400 }
     );
+  }
 
-    return NextResponse.json({ ok: true, orders });
+  // El guard devuelve el payload del admin (sub = id del admin de panel).
+  const adminId = (guard as any)?.sub ? `admin:${(guard as any).sub}` : "admin:panel";
+
+  try {
+    const order = await createManualOrder(body as ManualOrderInput, adminId);
+    return NextResponse.json({ ok: true, order }, { status: 201 });
   } catch (error) {
     return errorResponse(error);
   }

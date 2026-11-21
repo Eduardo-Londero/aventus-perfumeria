@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 
 export default function RegistroPage() {
   const router = useRouter();
-  const { register, isLoading } = useAuth();
+  const { register, loginWithGoogle, isLoading } = useAuth();
 
   const [form, setForm] = useState({
     name: "",
@@ -79,9 +79,7 @@ export default function RegistroPage() {
   };
 
   const handleGoogleLogin = () => {
-    // TODO: Implementar Google OAuth cuando se configuren las credenciales
-    // Requiere: GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en variables de entorno
-    alert("Google Login estará disponible pronto. Configurar GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET.");
+    void loginWithGoogle();
   };
 
   return (
@@ -109,7 +107,8 @@ export default function RegistroPage() {
           {/* Google Login */}
           <button
             onClick={handleGoogleLogin}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-charcoal-200 rounded-lg text-sm font-medium text-charcoal-700 hover:bg-cream-50 transition-colors mb-6"
+            disabled={isLoading}
+            className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-charcoal-200 rounded-lg text-sm font-medium text-charcoal-700 hover:bg-cream-50 transition-colors mb-6 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path

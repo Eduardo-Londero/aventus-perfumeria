@@ -25,6 +25,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
+  loginWithGoogle: (nextPath?: string) => Promise<void>;
   register: (data: {
     name: string;
     lastName: string;
@@ -117,17 +118,27 @@ function mapAuthUser(authUser: AuthUser, profile: {
   postal_code?: string | null;
 } | null): User {
   const meta = (authUser.user_metadata ?? {}) as Record<string, string>;
-  const fullName =
-    profile?.full_name ??
-    `${meta.name ?? ""} ${meta.lastName ?? ""}`.trim();
-  const [name, ...rest] = fullName.split(" ");
+  let fullName = profile?.full_name ?? null;
+  if (!fullName) {
+    if (meta.name && meta.lastName) {
+      fullName = `${meta.name} ${meta.lastName}`.trim();
+    } else if (meta.full_name) {
+      fullName = meta.full_name.trim();
+    } else if (meta.name) {
+      fullName = meta.name.trim();
+    } else if (meta.given_name || meta.family_name) {
+      fullName = [meta.given_name, meta.family_name].filter(Boolean).join(" ").trim();
+    }
+  }
+  const resolvedFullName = (fullName ?? "").trim();
+  const [name, ...rest] = resolvedFullName.split(" ");
 
   return {
     id: authUser.id,
     name: name ?? "",
     lastName: rest.join(" "),
     email: authUser.email ?? "",
-    phone: profile?.phone ?? meta.phone ?? "",
+    phone: profile?.phone ?? meta.phone ?? meta.phone_number ?? "",
     role: profile?.role === "admin" ? "admin" : "customer",
     address: address?.street ?? undefined,
     city: address?.city ?? undefined,
@@ -291,6 +302,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         showToast("Error al iniciar sesión", "error");
         setIsLoading(false);
         return { ok: false, role: null };
+      }
+    },
+    [showToast]
+  );
+
+  const loginWithGoogle = useCallback(
+    async (nextPath?: string): Promise<void> => {
+      setIsLoading(true);
+      try {
+        const supabase = supabaseOrNull();
+        if (!supabase) {
+          showToast(
+            "Faltan NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en el entorno. Completá .env.local (ver .env.example).",
+            "error"
+          );
+          setIsLoading(false);
+          return;
+        }
+
+        const safeNext =
+          nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")
+            ? nextPath
+            : "/mi-cuenta";
+
+        const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+          safeNext
+        )}`;
+
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo },
+        });
+
+        if (error) {
+          showToast(error.message || "No se pudo iniciar sesión con Google", "error");
+          setIsLoading(false);
+        }
+        // Si no hay error, el navegador redirige a Google/Supabase y la
+        // página se descarga; el estado queda en "cargando" hasta entonces.
+      } catch {
+        showToast("No se pudo iniciar sesión con Google", "error");
+        setIsLoading(false);
       }
     },
     [showToast]
@@ -547,6 +600,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAdmin: user?.role === "admin",
         isLoading,
         login,
+        loginWithGoogle,
         register,
         logout,
         updateProfile,

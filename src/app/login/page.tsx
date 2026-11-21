@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 
 function LoginForm() {
   const router = useRouter();
-  const { login, isLoading } = useAuth();
+  const { login, loginWithGoogle, isLoading } = useAuth();
   const params = useSearchParams();
   const nextPath = params.get("next");
   const reason = params.get("reason");
@@ -73,9 +73,7 @@ function LoginForm() {
   };
 
   const handleGoogleLogin = () => {
-    // TODO: Implementar Google OAuth cuando se configuren las credenciales
-    // Requiere: GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en variables de entorno
-    alert("Google Login estará disponible pronto. Configurar GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET.");
+    void loginWithGoogle(nextPath ?? undefined);
   };
 
   return (
@@ -103,7 +101,8 @@ function LoginForm() {
           {/* Google Login */}
           <button
             onClick={handleGoogleLogin}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-charcoal-200 rounded-lg text-sm font-medium text-charcoal-700 hover:bg-cream-50 transition-colors mb-6"
+            disabled={isLoading}
+            className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-charcoal-200 rounded-lg text-sm font-medium text-charcoal-700 hover:bg-cream-50 transition-colors mb-6 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path

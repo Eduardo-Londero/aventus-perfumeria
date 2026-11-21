@@ -11,6 +11,8 @@ export default function AdminConfiguracionPage() {
   const { showToast } = useToast();
   const [shippingProviders, setShippingProviders] = useState<Array<{ id: string; name: string; configured: boolean; enabled: boolean }>>([]);
   const [loadingProviders, setLoadingProviders] = useState(true);
+  const [integrations, setIntegrations] = useState<Array<{ id: string; name: string; configured: boolean; details: string }>>([]);
+  const [loadingIntegrations, setLoadingIntegrations] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -22,6 +24,20 @@ export default function AdminConfiguracionPage() {
         // ignore
       } finally {
         setLoadingProviders(false);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/integrations/status");
+        const data = await res.json();
+        if (data.ok) setIntegrations(data.integrations);
+      } catch {
+        // ignore
+      } finally {
+        setLoadingIntegrations(false);
       }
     })();
   }, []);
@@ -289,6 +305,35 @@ export default function AdminConfiguracionPage() {
               />
             </div>
           </div>
+        </div>
+
+        {/* Estado de integraciones */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Estado de integraciones</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Muestra qué servicios externos están configurados en el servidor.
+          </p>
+          {loadingIntegrations ? (
+            <p className="text-sm text-gray-500">Cargando...</p>
+          ) : (
+            <div className="space-y-3">
+              {integrations.map((i) => (
+                <div key={i.id} className="flex items-start justify-between p-3 border border-gray-200 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-900">{i.name}</p>
+                    <p className="text-xs text-gray-500 mt-1">{i.details}</p>
+                  </div>
+                  <span
+                    className={`px-3 py-1 text-xs font-medium rounded-full ${
+                      i.configured ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {i.configured ? "Configurado" : "Pendiente"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Transportistas */}

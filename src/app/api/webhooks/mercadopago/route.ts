@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import { validateWebhookSignature, getPayment, mapPaymentStatus } from "@/lib/mercadopago";
+import { sendEmail } from "@/lib/server/emailService";
+import { paymentApprovedEmail } from "@/lib/server/emailTemplates";
 
 export async function POST(req: NextRequest) {
   let payload: any = null;
@@ -56,7 +58,7 @@ export async function POST(req: NextRequest) {
     const admin = getSupabaseAdmin();
     const { data: order, error: oErr } = await admin
       .from("orders")
-      .select("id, order_number, total_cents, payment_status, payment_transaction_ref, payment_paid_at, fulfillment_status")
+      .select("id, order_number, total_cents, payment_status, payment_transaction_ref, payment_paid_at, fulfillment_status, customer_name, customer_email, order_items(name, quantity, line_total_cents)")
       .eq("order_number", externalRef)
       .maybeSingle();
 
@@ -111,6 +113,23 @@ export async function POST(req: NextRequest) {
         amountOk,
       },
     });
+
+    // Email de pago aprobado (solo si hay email y el pago quedó aprobado)
+    if (finalStatus === "paid" && order.customer_email) {
+      const items = (order.order_items ?? []).map((it: any) => ({
+        name: it.name,
+        quantity: it.quantity,
+        subtotal: `$${((it.line_total_cents ?? 0) / 100).toLocaleString("es-AR")}`,
+      }));
+      const tpl = paymentApprovedEmail({
+        orderNumber: order.order_number,
+        customerName: order.customer_name || "Cliente",
+        customerEmail: order.customer_email,
+        total: `$${((order.total_cents ?? 0) / 100).toLocaleString("es-AR")}`,
+        items,
+      });
+      void sendEmail({ to: order.customer_email, subject: tpl.subject, html: tpl.html }).catch(() => undefined);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

@@ -12,6 +12,8 @@
 
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import { mapOrderRow, centsToPesos, pesosToCents } from "@/lib/orderMapping";
+import { sendEmail } from "@/lib/server/emailService";
+import { orderReceivedEmail, orderShippedEmail, orderCancelledEmail } from "@/lib/server/emailTemplates";
 import type { Order, OrderStatus } from "@/types";
 import type {
   DeliveryMethod,
@@ -234,7 +236,23 @@ export async function createManualOrder(
     metadata: { orderNumber, itemCount: itemRows.length, totalCents: totalCents },
   });
 
-  // 9. Re-leer con items e historial
+  // 9. Email de pedido recibido (si hay email)
+  if (input.customer.email) {
+    const tpl = orderReceivedEmail({
+      orderNumber,
+      customerName: customerName,
+      customerEmail: input.customer.email,
+      total: centsToPesos(totalCents).toLocaleString("es-AR", { style: "currency", currency: "ARS" }),
+      items: itemRows.map((r: any) => ({
+        name: r.name,
+        quantity: r.quantity,
+        subtotal: centsToPesos(r.line_total_cents).toLocaleString("es-AR", { style: "currency", currency: "ARS" }),
+      })),
+    });
+    void sendEmail({ to: input.customer.email, subject: tpl.subject, html: tpl.html }).catch(() => undefined);
+  }
+
+  // 10. Re-leer con items e historial
   const { data: full } = await admin
     .from("orders")
     .select("*, order_items(*), order_status_history(*)")
@@ -385,6 +403,19 @@ export async function updateOrder(
       if (sh.status === "despachado" && !current.shipping_dispatched_at) {
         patch.shipping_dispatched_at = nowIso();
       }
+      // Email de despacho
+      if (sh.status === "despachado" && current.customer_email) {
+        const tpl = orderShippedEmail({
+          orderNumber,
+          customerName: current.customer_name ?? "Cliente",
+          customerEmail: current.customer_email,
+          total: centsToPesos(current.total_cents ?? 0).toLocaleString("es-AR", { style: "currency", currency: "ARS" }),
+          items: [],
+          trackingCode: sh.trackingCode ?? current.shipping_tracking_code ?? undefined,
+          carrier: sh.carrier ?? current.shipping_carrier ?? undefined,
+        });
+        void sendEmail({ to: current.customer_email, subject: tpl.subject, html: tpl.html }).catch(() => undefined);
+      }
     }
     if (sh.notes !== undefined && sh.notes !== current.shipping_notes) {
       patch.shipping_notes = sh.notes;
@@ -453,6 +484,16 @@ export async function updateOrder(
           fulfillment_status: db.fulfillment_status,
           reason: "Cancelado desde el panel",
         });
+        if (current.customer_email) {
+          const tpl = orderCancelledEmail({
+            orderNumber,
+            customerName: current.customer_name ?? "Cliente",
+            customerEmail: current.customer_email,
+            total: centsToPesos(current.total_cents ?? 0).toLocaleString("es-AR", { style: "currency", currency: "ARS" }),
+            items: [],
+          });
+          void sendEmail({ to: current.customer_email, subject: tpl.subject, html: tpl.html }).catch(() => undefined);
+        }
         await admin.from("order_activity_log").insert({
           order_id: orderId,
           actor,

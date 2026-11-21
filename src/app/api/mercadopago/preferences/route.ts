@@ -66,8 +66,18 @@ export async function POST(req: NextRequest) {
     console.error("mercadopago preferences error", err);
     const message = err instanceof Error ? err.message : "Error creando preferencia.";
     const details = err instanceof Error ? err.stack : String(err);
+    const token = process.env.MERCADOPAGO_ACCESS_TOKEN?.trim() || "";
     return NextResponse.json(
-      { ok: false, message, details },
+      {
+        ok: false,
+        message,
+        details,
+        tokenInfo: {
+          present: !!token,
+          prefix: token ? token.slice(0, 12) : null,
+          length: token.length,
+        },
+      },
       { status: 500 }
     );
   }

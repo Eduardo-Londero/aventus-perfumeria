@@ -242,6 +242,7 @@ export default function CheckoutPage() {
         }
         clearCart();
         setIsProcessing(false);
+        showToast("Redirigiendo a Mercado Pago...", "info");
         window.location.href = data.redirect_url || data.init_point;
         return;
       } catch (err) {
@@ -309,7 +310,9 @@ Pago: ${form.paymentMethod === "transferencia" ? "Transferencia bancaria" : "Efe
             Pedido generado
           </h1>
           <p className="text-charcoal-600 mb-6">
-            Tu pedido fue creado. Se abrió WhatsApp para que puedas confirmarlo.
+            {form.paymentMethod === "mercado_pago"
+              ? "Tu pedido fue creado. Serás redirigido a Mercado Pago para completar el pago."
+              : "Tu pedido fue creado. Se abrió WhatsApp para que puedas confirmarlo."}
           </p>
           <div className="bg-cream-100 p-4 mb-6">
             <p className="text-xs text-charcoal-500 mb-1">Número de pedido</p>
@@ -539,10 +542,14 @@ Pago: ${form.paymentMethod === "transferencia" ? "Transferencia bancaria" : "Efe
                   ? "Procesando..."
                   : hasBlockingIssues
                     ? "REVISÁ EL CARRITO"
-                    : "GENERAR PEDIDO Y CONFIRMAR POR WHATSAPP"}
+                    : form.paymentMethod === "mercado_pago"
+                      ? "PAGAR CON MERCADO PAGO"
+                      : "GENERAR PEDIDO Y CONFIRMAR POR WHATSAPP"}
               </button>
               <p className="text-xs text-charcoal-500 text-center mt-4">
-                Se abrirá WhatsApp para confirmar tu pedido
+                {form.paymentMethod === "mercado_pago"
+                  ? "Serás redirigido a Mercado Pago para completar el pago"
+                  : "Se abrirá WhatsApp para confirmar tu pedido"}
               </p>
             </div>
           </div>

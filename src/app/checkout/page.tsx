@@ -13,6 +13,8 @@ import { useAuth } from "@/context/AuthContext";
 import { formatPrice, generateWhatsAppUrl } from "@/config/site";
 import { computeShipping, computeSubtotal, findStockIssues } from "@/lib/pricing";
 import { dbProducts, onBackendReady } from "@/lib/db";
+import { hasSupabasePublicConfig } from "@/lib/supabaseClient";
+import { listAddresses, type Address } from "@/lib/addresses";
 
 
 import type { Product } from "@/types";
@@ -39,6 +41,8 @@ export default function CheckoutPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>("");
 
   /**
    * Con el backend `supabase` el catálogo llega por hidratación async. El
@@ -49,7 +53,30 @@ export default function CheckoutPage() {
   const [catalogVersion, setCatalogVersion] = useState(0);
   useEffect(() => onBackendReady(() => setCatalogVersion((v) => v + 1)), []);
 
+  useEffect(() => {
+    if (!user || !hasSupabasePublicConfig()) return;
+    listAddresses(user.id)
+      .then((list) => setSavedAddresses(list))
+      .catch(() => setSavedAddresses([]));
+  }, [user]);
+
   const isDelivery = form.deliveryMethod === "envio";
+
+  const applyAddress = (addr: Address) => {
+    setForm((prev) => ({
+      ...prev,
+      address: `${addr.street} ${addr.streetNumber}`.trim(),
+      city: addr.city,
+      postalCode: addr.postalCode,
+    }));
+  };
+
+  const handleSelectAddress = (id: string) => {
+    setSelectedAddressId(id);
+    if (id === "new") return;
+    const addr = savedAddresses.find((a) => a.id === id);
+    if (addr) applyAddress(addr);
+  };
 
   /**
    * Revalidación contra la fuente de datos (src/lib/db.ts) en cada render:
@@ -441,6 +468,24 @@ Pago: ${form.paymentMethod === "transferencia" ? "Transferencia bancaria" : "Efe
               </div>
               {isDelivery && (
                 <div className="mt-6 space-y-4">
+                  {savedAddresses.length > 0 && (
+                    <div>
+                      <label className="block text-sm text-charcoal-600 mb-1.5">Dirección guardada</label>
+                      <select
+                        value={selectedAddressId}
+                        onChange={(e) => handleSelectAddress(e.target.value)}
+                        className="input-aventus"
+                      >
+                        <option value="">Seleccioná una dirección</option>
+                        {savedAddresses.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.alias} — {a.street} {a.streetNumber}, {a.city}
+                          </option>
+                        ))}
+                        <option value="new">Nueva dirección</option>
+                      </select>
+                    </div>
+                  )}
                   <input type="text" name="address" value={form.address} onChange={handleChange} placeholder="Dirección *" className={`input-aventus ${errors.address ? "border-red-500" : ""}`} />
                   {errors.address && <p className="text-xs text-red-500 mt-1">{errors.address}</p>}
                   <div className="grid grid-cols-2 gap-4">

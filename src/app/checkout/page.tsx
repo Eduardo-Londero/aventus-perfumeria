@@ -13,7 +13,7 @@ import { useAuth } from "@/context/AuthContext";
 import { formatPrice, generateWhatsAppUrl } from "@/config/site";
 import { computeShipping, computeSubtotal, findStockIssues } from "@/lib/pricing";
 import { dbProducts, onBackendReady } from "@/lib/db";
-import { IS_SUPABASE_BACKEND } from "@/lib/dataBackend";
+
 
 import type { Product } from "@/types";
 
@@ -154,10 +154,9 @@ export default function CheckoutPage() {
       return;
     }
 
-    // Comprar requiere cuenta (el esquema de pedidos exige user_id NOT
-    // NULL y la RPC rechaza invitados): sin sesión se envía al login y,
-    // con el `?next=`, se vuelve acá.
-    if (IS_SUPABASE_BACKEND && !user) {
+    // Comprar requiere cuenta SIEMPRE (no existe compra como invitado):
+    // sin sesión se envía al login y, con el `?next=`, se vuelve acá.
+    if (!user) {
       showToast(
         "Iniciá sesión o creá una cuenta para completar la compra.",
         "info"

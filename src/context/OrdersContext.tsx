@@ -154,6 +154,9 @@ export function OrdersProvider({ children }: { children: ReactNode }) {
       // ---------------------------------------------------------------
       // localStorage (modo histórico, byte a byte igual que siempre).
       // ---------------------------------------------------------------
+      if (!user) {
+        throw new Error("Iniciá sesión para completar la compra.");
+      }
       const orderNumber = dbOrders.generateOrderNumber();
 
       const newOrder: Order = {

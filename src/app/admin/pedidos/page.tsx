@@ -530,6 +530,32 @@ export default function AdminPedidosPage() {
                 <Button size="sm" onClick={() => patchOrder(selected.id, { payment: { status: "paid", amountPaid: selected.total } }, "Pago confirmado")}>
                   Confirmar pago
                 </Button>
+                {selected.paymentTransactionRef && selected.paymentStatus === "paid" && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={async () => {
+                      if (!confirm("¿Reembolsar el pago en Mercado Pago? Se cancelará el pedido y se liberará el stock.")) return;
+                      try {
+                        const res = await fetch(`/api/admin/orders/${encodeURIComponent(selected.id)}/refund`, { method: "POST" });
+                        const data = await res.json();
+                        if (!res.ok || !data.ok) {
+                          showToast(data?.message || "No se pudo reembolsar", "error");
+                          return;
+                        }
+                        showToast(data.message || "Reembolso procesado", "success");
+                        await load();
+                        const r = await fetch(`/api/admin/orders/${encodeURIComponent(selected.id)}`);
+                        const d = await r.json();
+                        if (d.ok) setSelected(d.order);
+                      } catch {
+                        showToast("Error de red", "error");
+                      }
+                    }}
+                  >
+                    Reembolsar MP
+                  </Button>
+                )}
                 <Button size="sm" variant="secondary" onClick={() => {
                   const ref = prompt("Número de transacción/operación:");
                   if (ref !== null) patchOrder(selected.id, { payment: { transactionRef: ref } }, "Transacción guardada");

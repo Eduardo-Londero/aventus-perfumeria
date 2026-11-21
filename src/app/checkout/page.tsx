@@ -237,12 +237,12 @@ export default function CheckoutPage() {
           }),
         });
         const data = await res.json();
-        if (!res.ok || !data.ok || !data.init_point) {
+        if (!res.ok || !data.ok || !(data.redirect_url || data.init_point)) {
           throw new Error(data?.message || "No se pudo iniciar el pago con Mercado Pago.");
         }
         clearCart();
         setIsProcessing(false);
-        window.location.href = data.init_point;
+        window.location.href = data.redirect_url || data.init_point;
         return;
       } catch (err) {
         showToast(

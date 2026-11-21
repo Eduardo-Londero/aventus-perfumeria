@@ -61,7 +61,11 @@ export async function POST(req: NextRequest) {
       notificationUrl,
     });
 
-    return NextResponse.json({ ok: true, ...pref });
+    // En modo prueba, redirigir al sandbox para poder usar usuarios/tarjetas de prueba.
+    const isTest = (process.env.MERCADOPAGO_ACCESS_TOKEN || "").startsWith("TEST-");
+    const redirectUrl = isTest && pref.sandbox_init_point ? pref.sandbox_init_point : pref.init_point;
+
+    return NextResponse.json({ ok: true, ...pref, redirect_url: redirectUrl });
   } catch (err) {
     console.error("mercadopago preferences error", err);
     const message = err instanceof Error ? err.message : "Error creando preferencia.";

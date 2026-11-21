@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { siteConfig } from "@/config/site";
 import { useToast } from "@/context/ToastContext";
 import { dbProducts, dbCategories, dbBrands, dbGenders, dbOrders, dbHomeSections, getDataBackend } from "@/lib/db";
@@ -9,6 +9,44 @@ import type { CartItem } from "@/types";
 
 export default function AdminConfiguracionPage() {
   const { showToast } = useToast();
+  const [shippingProviders, setShippingProviders] = useState<Array<{ id: string; name: string; configured: boolean; enabled: boolean }>>([]);
+  const [loadingProviders, setLoadingProviders] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/shipping/settings");
+        const data = await res.json();
+        if (data.ok) setShippingProviders(data.providers);
+      } catch {
+        // ignore
+      } finally {
+        setLoadingProviders(false);
+      }
+    })();
+  }, []);
+
+  const toggleProvider = async (provider: string, enabled: boolean) => {
+    try {
+      const res = await fetch("/api/shipping/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, enabled }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        showToast(data?.message || "No se pudo actualizar", "error");
+        return;
+      }
+      setShippingProviders((prev) =>
+        prev.map((p) => (p.id === provider ? { ...p, enabled } : p))
+      );
+      showToast(enabled ? "Transportista habilitado" : "Transportista deshabilitado", "success");
+    } catch {
+      showToast("Error de red", "error");
+    }
+  };
+
   const [config, setConfig] = useState<{
     storeName: string;
     tagline: string;
@@ -251,6 +289,43 @@ export default function AdminConfiguracionPage() {
               />
             </div>
           </div>
+        </div>
+
+        {/* Transportistas */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Transportistas de envío</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Habilitá o deshabilitá cada transportista. Los deshabilitados no aparecen en el checkout.
+            La configuración de credenciales se hace por variables de entorno.
+          </p>
+          {loadingProviders ? (
+            <p className="text-sm text-gray-500">Cargando...</p>
+          ) : shippingProviders.length === 0 ? (
+            <p className="text-sm text-gray-500">No hay transportistas configurados.</p>
+          ) : (
+            <div className="space-y-3">
+              {shippingProviders.map((p) => (
+                <div key={p.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-900">{p.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {p.configured ? "Credenciales configuradas" : "Sin credenciales (configurar env vars)"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => toggleProvider(p.id, !p.enabled)}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      p.enabled
+                        ? "bg-green-100 text-green-700 hover:bg-green-200"
+                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    {p.enabled ? "Habilitado" : "Deshabilitado"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Respaldo de datos (Fase D) */}

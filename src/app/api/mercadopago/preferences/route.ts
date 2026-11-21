@@ -63,8 +63,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, ...pref });
   } catch (err) {
+    console.error("mercadopago preferences error", err);
+    const message = err instanceof Error ? err.message : "Error creando preferencia.";
+    const details = err instanceof Error ? err.stack : String(err);
     return NextResponse.json(
-      { ok: false, message: err instanceof Error ? err.message : "Error creando preferencia." },
+      { ok: false, message, details },
       { status: 500 }
     );
   }

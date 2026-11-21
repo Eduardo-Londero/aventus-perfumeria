@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
+import AddressesManager from "@/components/account/AddressesManager";
 
-type Tab = "datos" | "direccion" | "pedidos" | "favoritos" | "seguridad";
+type Tab = "datos" | "direccion" | "direcciones" | "pedidos" | "favoritos" | "seguridad";
 
 export default function MiCuentaPage() {
   const router = useRouter();
@@ -116,6 +117,11 @@ export default function MiCuentaPage() {
       id: "direccion",
       label: "Dirección",
       icon: "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z M15 11a3 3 0 11-6 0 3 3 0 016 0z",
+    },
+    {
+      id: "direcciones",
+      label: "Mis direcciones",
+      icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
     },
     {
       id: "pedidos",
@@ -350,6 +356,13 @@ export default function MiCuentaPage() {
                     Guardar dirección
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* Mis direcciones */}
+            {activeTab === "direcciones" && (
+              <div className="bg-white border border-charcoal-100 rounded-lg p-8">
+                <AddressesManager />
               </div>
             )}
 

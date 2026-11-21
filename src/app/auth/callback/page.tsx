@@ -27,16 +27,31 @@ function AuthCallbackInner() {
       router.replace(ok ? safeNext : "/login");
     };
 
-    void supabase.auth.getSession().then(({ data, error }) => {
-      if (error) {
-        setMessage("No se pudo completar el inicio de sesión.");
-        finish(false);
-        return;
-      }
-      if (data.session) {
-        finish(true);
-      }
-    });
+    const code = params.get("code");
+    if (code) {
+      // Flujo PKCE: intercambiar el código por sesión.
+      void supabase.auth
+        .exchangeCodeForSession(code)
+        .then(({ error }) => {
+          if (error) {
+            setMessage("No se pudo completar el inicio de sesión.");
+            finish(false);
+            return;
+          }
+          finish(true);
+        });
+    } else {
+      void supabase.auth.getSession().then(({ data, error }) => {
+        if (error) {
+          setMessage("No se pudo completar el inicio de sesión.");
+          finish(false);
+          return;
+        }
+        if (data.session) {
+          finish(true);
+        }
+      });
+    }
 
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {

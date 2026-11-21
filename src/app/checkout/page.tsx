@@ -33,7 +33,7 @@ export default function CheckoutPage() {
     city: user?.city || "",
     postalCode: user?.postalCode || "",
     deliveryMethod: "retiro" as "retiro" | "envio",
-    paymentMethod: "transferencia" as "transferencia" | "efectivo",
+    paymentMethod: "transferencia" as "transferencia" | "efectivo" | "mercado_pago",
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -219,6 +219,40 @@ export default function CheckoutPage() {
     }
 
     setOrderId(order.id);
+
+    // Si el pago es por Mercado Pago, redirigir al checkout hospedado.
+    if (form.paymentMethod === "mercado_pago") {
+      try {
+        const res = await fetch("/api/mercadopago/preferences", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orderNumber: order.id,
+            items: orderItems.map((it) => ({
+              id: it.productId,
+              title: it.name,
+              quantity: it.quantity,
+            })),
+            payerEmail: form.email,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok || !data.init_point) {
+          throw new Error(data?.message || "No se pudo iniciar el pago con Mercado Pago.");
+        }
+        clearCart();
+        setIsProcessing(false);
+        window.location.href = data.init_point;
+        return;
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : "No se pudo iniciar el pago con Mercado Pago.",
+          "error"
+        );
+        setIsProcessing(false);
+        return;
+      }
+    }
 
     clearCart();
     setIsProcessing(false);
@@ -432,6 +466,13 @@ Pago: ${form.paymentMethod === "transferencia" ? "Transferencia bancaria" : "Efe
                   <div className="min-w-0">
                     <p className="font-medium truncate">Efectivo</p>
                     <p className="text-xs text-charcoal-500 truncate">En el local</p>
+                  </div>
+                </label>
+                <label className={`flex items-center gap-3 p-4 border cursor-pointer min-w-0 overflow-hidden ${form.paymentMethod === "mercado_pago" ? "border-gold-500 bg-gold-50" : "border-charcoal-200"}`}>
+                  <input type="radio" name="paymentMethod" value="mercado_pago" checked={form.paymentMethod === "mercado_pago"} onChange={handleChange} className="accent-gold-600 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">Mercado Pago</p>
+                    <p className="text-xs text-charcoal-500 truncate">Tarjetas y cuotas</p>
                   </div>
                 </label>
 

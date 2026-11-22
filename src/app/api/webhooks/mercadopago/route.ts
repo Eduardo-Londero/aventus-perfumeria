@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
       payment_status: finalStatus,
       payment_transaction_ref: paymentId,
       payment_amount_paid_cents: amountReceived,
-      payment_updated_by: "system:webhook",
+      payment_updated_by: null,
       payment_updated_at: new Date().toISOString(),
     };
     if (finalStatus === "paid" && !order.payment_paid_at) {

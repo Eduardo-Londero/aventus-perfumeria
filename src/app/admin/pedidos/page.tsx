@@ -84,6 +84,7 @@ export default function AdminPedidosPage() {
 
   const [selected, setSelected] = useState<Order | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [promptModal, setPromptModal] = useState<{ field: "transactionRef" | "carrier" | "trackingCode"; title: string; value: string } | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -161,6 +162,19 @@ export default function AdminPedidosPage() {
       setSelected(order);
     }
     setDetailOpen(true);
+  };
+
+  const submitPromptModal = async () => {
+    if (!promptModal || !selected) return;
+    const value = promptModal.value;
+    if (promptModal.field === "transactionRef") {
+      await patchOrder(selected.id, { payment: { transactionRef: value } }, "Transacción guardada");
+    } else if (promptModal.field === "carrier") {
+      await patchOrder(selected.id, { shipping: { carrier: value } }, "Transporte guardado");
+    } else if (promptModal.field === "trackingCode") {
+      await patchOrder(selected.id, { shipping: { trackingCode: value } }, "Tracking guardado");
+    }
+    setPromptModal(null);
   };
 
   const patchOrder = async (id: string, body: any, msg?: string) => {
@@ -556,10 +570,7 @@ export default function AdminPedidosPage() {
                     Reembolsar MP
                   </Button>
                 )}
-                <Button size="sm" variant="secondary" onClick={() => {
-                  const ref = prompt("Número de transacción/operación:");
-                  if (ref !== null) patchOrder(selected.id, { payment: { transactionRef: ref } }, "Transacción guardada");
-                }}>
+                <Button size="sm" variant="secondary" onClick={() => setPromptModal({ field: "transactionRef", title: "Número de transacción/operación", value: selected.paymentTransactionRef || "" })}>
                   Agregar transacción
                 </Button>
                 <select
@@ -591,16 +602,10 @@ export default function AdminPedidosPage() {
                 <div><span className="text-gray-500">Despachado:</span> {selected.shippingDispatchedAt ? new Date(selected.shippingDispatchedAt).toLocaleString("es-AR") : "-"}</div>
               </div>
               <div className="flex flex-wrap gap-2 mb-2">
-                <Button size="sm" variant="secondary" onClick={() => {
-                  const carrier = prompt("Empresa de transporte (OCA, Andreani, Correo Argentino...):", selected.shippingCarrier || "");
-                  if (carrier !== null) patchOrder(selected.id, { shipping: { carrier } }, "Transporte guardado");
-                }}>
+                <Button size="sm" variant="secondary" onClick={() => setPromptModal({ field: "carrier", title: "Empresa de transporte", value: selected.shippingCarrier || "" })}>
                   Transporte
                 </Button>
-                <Button size="sm" variant="secondary" onClick={() => {
-                  const code = prompt("Código de seguimiento:");
-                  if (code !== null) patchOrder(selected.id, { shipping: { trackingCode: code } }, "Tracking guardado");
-                }}>
+                <Button size="sm" variant="secondary" onClick={() => setPromptModal({ field: "trackingCode", title: "Código de seguimiento", value: selected.shippingTrackingCode || "" })}>
                   Tracking
                 </Button>
                 {selected.shippingTrackingCode && (
@@ -777,6 +782,25 @@ export default function AdminPedidosPage() {
 
             <div className="flex justify-end pt-4 border-t border-gray-200">
               <Button variant="secondary" onClick={() => setDetailOpen(false)}>Cerrar</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal de edición rápida (transacción, transporte, tracking) */}
+      <Modal isOpen={!!promptModal} onClose={() => setPromptModal(null)} title={promptModal?.title || ""}>
+        {promptModal && (
+          <div className="space-y-4">
+            <input
+              type="text"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              value={promptModal.value}
+              onChange={(e) => setPromptModal({ ...promptModal, value: e.target.value })}
+              autoFocus
+            />
+            <div className="flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setPromptModal(null)}>Cancelar</Button>
+              <Button onClick={submitPromptModal}>Guardar</Button>
             </div>
           </div>
         )}

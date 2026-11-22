@@ -382,7 +382,10 @@ export async function updateOrder(
       patch.payment_notes = pay.notes;
       activity.push({ event_type: "payment_notes_changed", field: "payment_notes", old_value: current.payment_notes, new_value: pay.notes });
     }
-    patch.payment_updated_by = actor.replace("admin:", "");
+    // payment_updated_by es uuid (FK a profiles). El panel/admin y los
+    // webhooks no tienen fila en profiles, así que se deja null para no
+    // violar la FK. El actor queda registrado en order_activity_log.
+    patch.payment_updated_by = null;
     patch.payment_updated_at = nowIso();
   }
 

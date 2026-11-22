@@ -34,8 +34,10 @@ export async function GET(req: NextRequest) {
       name: "Email transaccional (Resend)",
       configured: hasEmailConfig(),
       details: hasEmailConfig()
-        ? "RESEND_API_KEY configurada."
-        : "Falta RESEND_API_KEY (los emails no se enviarán).",
+        ? process.env.BREVO_API_KEY?.trim()
+          ? "Brevo configurado."
+          : "Resend configurado."
+        : "Falta BREVO_API_KEY o RESEND_API_KEY (los emails no se enviarán).",
     },
     {
       id: "andreani",

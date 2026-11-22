@@ -63,7 +63,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const addToCart = useCallback((product: Product, quantity = 1) => {
     // Verificar stock disponible
-    if (product.stock === 0) {
+    if (!product.stock || product.stock <= 0) {
       return;
     }
     

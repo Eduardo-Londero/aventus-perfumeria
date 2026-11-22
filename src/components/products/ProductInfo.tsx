@@ -39,7 +39,7 @@ export default function ProductInfo({ product, className = "" }: ProductInfoProp
   const whatsappMessage = `Hola ${siteConfig.name}, me interesa el perfume "${product.name}" de ${product.brand} (${formatPrice(product.price)}). ¿Está disponible?`;
   const whatsappUrl = generateWhatsAppUrl(whatsappMessage);
 
-  const isOutOfStock = product.stock === 0;
+  const isOutOfStock = !product.stock || product.stock <= 0;
   const isLowStock = product.stock > 0 && product.stock <= 3;
 
   return (

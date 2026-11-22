@@ -211,10 +211,10 @@ export default function FavoritosPage() {
                   </div>
                   <button
                     onClick={() => handleAddToCart(product)}
-                    disabled={product.stock === 0}
+                    disabled={!product.stock || product.stock <= 0}
                     className="w-full mt-4 py-2.5 bg-charcoal-900 text-cream-50 text-sm font-medium tracking-wide hover:bg-charcoal-800 transition-colors disabled:bg-charcoal-200 disabled:text-charcoal-400 disabled:cursor-not-allowed"
                   >
-                    {product.stock === 0 ? "Sin stock" : "Agregar al carrito"}
+                    {!product.stock || product.stock <= 0 ? "Sin stock" : "Agregar al carrito"}
                   </button>
                 </div>
               </div>

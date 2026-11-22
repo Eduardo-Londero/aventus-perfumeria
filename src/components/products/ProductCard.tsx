@@ -152,12 +152,12 @@ export default function ProductCard({ product, className = "" }: ProductCardProp
         {!isAdmin && (
           <button
             onClick={handleAddToCart}
-            disabled={isAdding || product.stock === 0}
+            disabled={isAdding || !product.stock || product.stock <= 0}
             className={[
               "w-full flex items-center justify-center gap-2 px-4 py-3 text-xs font-medium tracking-widest uppercase transition-all duration-300",
               isAdding
                 ? "bg-emerald-600 text-white"
-                : product.stock === 0
+                : !product.stock || product.stock <= 0
                 ? "bg-charcoal-200 text-charcoal-400 cursor-not-allowed"
                 : "bg-charcoal-900 text-cream-50 hover:bg-gold-600",
             ].join(" ")}
@@ -186,7 +186,7 @@ export default function ProductCard({ product, className = "" }: ProductCardProp
                 </svg>
                 Agregando...
               </>
-            ) : product.stock === 0 ? (
+            ) : !product.stock || product.stock <= 0 ? (
               "Sin stock"
             ) : (
               <>

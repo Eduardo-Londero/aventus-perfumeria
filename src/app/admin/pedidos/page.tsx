@@ -603,6 +603,52 @@ export default function AdminPedidosPage() {
                 }}>
                   Tracking
                 </Button>
+                {selected.shippingTrackingCode && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={async () => {
+                      const carrier = (selected.shippingCarrier || "").toLowerCase();
+                      const endpoint =
+                        carrier.includes("correo") || carrier.includes("argentino")
+                          ? "/api/shipping/correo-argentino/label"
+                          : "/api/shipping/andreani/label";
+                      try {
+                        const res = await fetch(endpoint, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ trackingNumber: selected.shippingTrackingCode }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok || !data.ok) {
+                          showToast(data?.message || "No se pudo generar el rótulo", "error");
+                          return;
+                        }
+                        // Descargar PDF
+                        const byteChars = atob(data.fileBase64);
+                        const byteNumbers = new Array(byteChars.length);
+                        for (let i = 0; i < byteChars.length; i++) {
+                          byteNumbers[i] = byteChars.charCodeAt(i);
+                        }
+                        const byteArray = new Uint8Array(byteNumbers);
+                        const blob = new Blob([byteArray], { type: "application/pdf" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = data.fileName || "rotulo.pdf";
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        showToast("Rótulo descargado", "success");
+                      } catch {
+                        showToast("Error de red", "error");
+                      }
+                    }}
+                  >
+                    Descargar rótulo
+                  </Button>
+                )}
                 {!selected.shippingTrackingCode && (
                   <>
                     <Button

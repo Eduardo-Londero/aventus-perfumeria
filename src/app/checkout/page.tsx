@@ -15,6 +15,7 @@ import { computeShipping, computeSubtotal, findStockIssues } from "@/lib/pricing
 import { dbProducts, onBackendReady } from "@/lib/db";
 import { hasSupabasePublicConfig } from "@/lib/supabaseClient";
 import { listAddresses, type Address } from "@/lib/addresses";
+import type { ShippingQuote } from "@/lib/shipping";
 
 
 import type { Product } from "@/types";
@@ -43,6 +44,10 @@ export default function CheckoutPage() {
   const [orderId, setOrderId] = useState<string | null>(null);
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>("");
+  const [shippingOptions, setShippingOptions] = useState<ShippingQuote[]>([]);
+  const [selectedShipping, setSelectedShipping] = useState<string>("");
+  const [shippingLoading, setShippingLoading] = useState(false);
+  const [shippingError, setShippingError] = useState<string | null>(null);
 
   /**
    * Con el backend `supabase` el catálogo llega por hidratación async. El
@@ -59,6 +64,54 @@ export default function CheckoutPage() {
       .then((list) => setSavedAddresses(list))
       .catch(() => setSavedAddresses([]));
   }, [user]);
+
+  // Cotización de envío cuando hay CP válido
+  useEffect(() => {
+    if (form.deliveryMethod !== "envio") {
+      setShippingOptions([]);
+      setSelectedShipping("");
+      setShippingError(null);
+      return;
+    }
+    const cp = form.postalCode.trim();
+    if (cp.length < 4) return;
+
+    let cancelled = false;
+    setShippingLoading(true);
+    setShippingError(null);
+    fetch("/api/shipping/quote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ postalCode: cp, weightGrams: 500 }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data.ok && Array.isArray(data.quotes)) {
+          setShippingOptions(data.quotes);
+          if (data.quotes.length > 0 && !selectedShipping) {
+            setSelectedShipping(data.quotes[0].provider + "|" + data.quotes[0].service);
+          }
+        } else {
+          setShippingOptions([]);
+          setShippingError(data?.message || "No se pudo cotizar el envío.");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setShippingOptions([]);
+          setShippingError("No se pudo cotizar el envío.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setShippingLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.deliveryMethod, form.postalCode]);
 
   const isDelivery = form.deliveryMethod === "envio";
 
@@ -129,8 +182,21 @@ export default function CheckoutPage() {
   }, [items, catalogVersion]);
 
   const subtotal = validated.subtotal;
-  const shippingCost = computeShipping(subtotal, form.deliveryMethod);
-  const envioOptionCost = computeShipping(subtotal, "envio");
+  // Costo de envío: si hay cotización seleccionada, usar su precio;
+  // si no, caer en el costo fijo configurado (retiro = 0).
+  const selectedQuote = shippingOptions.find(
+    (q) => q.provider + "|" + q.service === selectedShipping
+  );
+  const shippingCost =
+    form.deliveryMethod === "envio"
+      ? selectedQuote
+        ? selectedQuote.price
+        : shippingOptions.length === 0
+        ? computeShipping(subtotal, "envio")
+        : 0
+      : 0;
+  const envioOptionCost =
+    shippingOptions.length > 0 ? shippingOptions[0].price : computeShipping(subtotal, "envio");
   const total = subtotal + shippingCost;
   const hasBlockingIssues =
     validated.unavailable.length > 0 || validated.stockIssues.length > 0;
@@ -491,6 +557,59 @@ Pago: ${form.paymentMethod === "transferencia" ? "Transferencia bancaria" : "Efe
                   <div className="grid grid-cols-2 gap-4">
                     <input type="text" name="city" value={form.city} onChange={handleChange} placeholder="Ciudad *" className={`input-aventus ${errors.city ? "border-red-500" : ""}`} />
                     <input type="text" name="postalCode" value={form.postalCode} onChange={handleChange} placeholder="Código postal *" className={`input-aventus ${errors.postalCode ? "border-red-500" : ""}`} />
+                  </div>
+
+                  {/* Cotización de envío */}
+                  <div className="mt-4">
+                    {shippingLoading && (
+                      <p className="text-sm text-charcoal-500">Cotizando envío...</p>
+                    )}
+                    {!shippingLoading && shippingError && (
+                      <p className="text-sm text-red-600">{shippingError}</p>
+                    )}
+                    {!shippingLoading && shippingOptions.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-charcoal-700">Opciones de envío</p>
+                        {shippingOptions.map((q) => {
+                          const key = q.provider + "|" + q.service;
+                          return (
+                            <label
+                              key={key}
+                              className={`flex items-center justify-between p-3 border cursor-pointer ${
+                                selectedShipping === key ? "border-gold-500 bg-gold-50" : "border-charcoal-200"
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="radio"
+                                  name="shippingOption"
+                                  value={key}
+                                  checked={selectedShipping === key}
+                                  onChange={() => setSelectedShipping(key)}
+                                  className="accent-gold-600"
+                                />
+                                <div>
+                                  <p className="text-sm font-medium capitalize">
+                                    {q.provider.replace("_", " ")} — {q.service}
+                                  </p>
+                                  {q.estimatedDays && (
+                                    <p className="text-xs text-charcoal-500">{q.estimatedDays}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-sm font-medium">
+                                {q.price === 0 ? "Gratis" : formatPrice(q.price)}
+                              </p>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {!shippingLoading && shippingOptions.length === 0 && !shippingError && form.postalCode.trim().length >= 4 && (
+                      <p className="text-sm text-charcoal-500">
+                        No hay opciones de envío disponibles para este código postal.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

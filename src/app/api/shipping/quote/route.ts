@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getShippingQuotes } from "@/lib/shipping";
+import { shippingProviders } from "@/lib/shipping";
+import { isShippingProviderEnabled } from "@/lib/server/shippingSettings";
 
 export async function POST(req: NextRequest) {
   let body: any;
@@ -27,7 +28,25 @@ export async function POST(req: NextRequest) {
     lengthCm: Number(body?.lengthCm) || 10,
   };
 
-  const { quotes, results } = await getShippingQuotes(address, pkg);
+  // Filtrar por habilitado (DB) + configurado (env)
+  const enabledResults = [];
+  const enabledQuotes = [];
+  for (const p of shippingProviders) {
+    const enabled = await isShippingProviderEnabled(p.id);
+    if (!enabled) {
+      enabledResults.push({
+        provider: p.id,
+        configured: p.isConfigured(),
+        ok: false,
+        message: "Deshabilitado por el administrador.",
+        quotes: [],
+      });
+      continue;
+    }
+    const r = await p.getQuotes(address, pkg);
+    enabledResults.push(r);
+    enabledQuotes.push(...r.quotes);
+  }
 
-  return NextResponse.json({ ok: true, quotes, results });
+  return NextResponse.json({ ok: true, quotes: enabledQuotes, results: enabledResults });
 }

@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/server/supabaseAdmin";
 import { hasMercadoPagoConfig, createPreference } from "@/lib/mercadopago";
+import { rateLimit, getClientIp } from "@/lib/server/rateLimit";
 
 export async function POST(req: NextRequest) {
+  const rl = rateLimit(`mp-pref:${getClientIp(req)}`, 20, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { ok: false, message: "Demasiadas solicitudes. Intentá en un momento." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+    );
+  }
+
   if (!hasMercadoPagoConfig()) {
     return NextResponse.json(
       { ok: false, message: "Mercado Pago no está configurado en el servidor (falta MERCADOPAGO_ACCESS_TOKEN)." },

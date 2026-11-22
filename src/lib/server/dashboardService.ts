@@ -184,6 +184,7 @@ export interface MonthlyRow {
   orders: number;
   revenue: number; // pesos
   collected: number;
+  pendingCollection: number; // pesos
   averageTicket: number;
   change: number; // % vs mes anterior
 }
@@ -199,10 +200,10 @@ export async function getMonthly(year: number): Promise<{ rows: MonthlyRow[]; be
   const prevTo = `${year - 1}-12-31T23:59:59.999Z`;
   const prevRows = await fetchOrdersInRange(prevFrom, prevTo);
 
-  const byMonth = new Map<string, { orders: number; revenue: number; collected: number }>();
+  const byMonth = new Map<string, { orders: number; revenue: number; collected: number; pending: number }>();
   for (let m = 1; m <= 12; m++) {
     const k = `${year}-${String(m).padStart(2, "0")}`;
-    byMonth.set(k, { orders: 0, revenue: 0, collected: 0 });
+    byMonth.set(k, { orders: 0, revenue: 0, collected: 0, pending: 0 });
   }
   for (const o of rows) {
     if (o.fulfillment_status === "cancelled") continue;
@@ -212,6 +213,7 @@ export async function getMonthly(year: number): Promise<{ rows: MonthlyRow[]; be
     e.orders += 1;
     e.revenue += o.total_cents ?? 0;
     if (o.payment_status === "paid") e.collected += o.total_cents ?? 0;
+    else e.pending += o.total_cents ?? 0;
   }
 
   const result: MonthlyRow[] = [];
@@ -225,6 +227,7 @@ export async function getMonthly(year: number): Promise<{ rows: MonthlyRow[]; be
       orders: e.orders,
       revenue: centsToPesos(e.revenue),
       collected: centsToPesos(e.collected),
+      pendingCollection: centsToPesos(e.pending),
       averageTicket: e.orders > 0 ? centsToPesos(e.revenue / e.orders) : 0,
       change,
     });

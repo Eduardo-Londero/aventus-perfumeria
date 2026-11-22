@@ -153,7 +153,7 @@ interface Kpis {
 
 interface SeriesPoint { key: string; revenue: number; orders: number; prevRevenue: number; prevOrders: number; }
 
-interface MonthlyRow { month: string; orders: number; revenue: number; collected: number; averageTicket: number; change: number; }
+interface MonthlyRow { month: string; orders: number; revenue: number; collected: number; pendingCollection: number; averageTicket: number; change: number; }
 
 interface ProductRank { productId: string; name: string; brandName: string; imageUrl: string | null; unitsSold: number; orderCount: number; revenue: number; share: number; }
 
@@ -463,6 +463,7 @@ export default function AdminDashboard() {
                     <th className="px-3 py-2 text-right text-xs text-gray-500">Pedidos</th>
                     <th className="px-3 py-2 text-right text-xs text-gray-500">Facturación</th>
                     <th className="px-3 py-2 text-right text-xs text-gray-500">Cobrado</th>
+                    <th className="px-3 py-2 text-right text-xs text-gray-500">Pend. cobro</th>
                     <th className="px-3 py-2 text-right text-xs text-gray-500">Ticket prom.</th>
                     <th className="px-3 py-2 text-right text-xs text-gray-500">Var %</th>
                   </tr>
@@ -474,6 +475,7 @@ export default function AdminDashboard() {
                       <td className="px-3 py-2 text-right">{r.orders}</td>
                       <td className="px-3 py-2 text-right">{formatPrice(r.revenue)}</td>
                       <td className="px-3 py-2 text-right">{formatPrice(r.collected)}</td>
+                      <td className="px-3 py-2 text-right text-amber-600">{formatPrice(r.pendingCollection)}</td>
                       <td className="px-3 py-2 text-right">{formatPrice(r.averageTicket)}</td>
                       <td className={`px-3 py-2 text-right ${r.change >= 0 ? "text-green-600" : "text-red-600"}`}>
                         {r.orders > 0 ? `${r.change.toFixed(1)}%` : "-"}

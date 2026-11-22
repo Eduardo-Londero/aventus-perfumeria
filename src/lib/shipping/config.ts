@@ -1,7 +1,9 @@
 export function hasAndreaniConfig(): boolean {
   return !!(
-    process.env.ANDREANI_API_BASE?.trim() &&
-    (process.env.ANDREANI_USERNAME?.trim() || process.env.ANDREANI_API_KEY?.trim())
+    process.env.ANDREANI_USERNAME?.trim() &&
+    process.env.ANDREANI_PASSWORD?.trim() &&
+    process.env.ANDREANI_CLIENTE?.trim() &&
+    process.env.ANDREANI_CONTRATO?.trim()
   );
 }
 
@@ -14,11 +16,14 @@ export function hasCorreoArgentinoConfig(): boolean {
 
 export function getAndreaniConfig() {
   return {
-    base: process.env.ANDREANI_API_BASE?.trim() || "",
+    base: process.env.ANDREANI_DEBUG?.toLowerCase() === "true"
+      ? "https://apisqa.andreani.com"
+      : "https://apis.andreani.com",
     username: process.env.ANDREANI_USERNAME?.trim() || "",
     password: process.env.ANDREANI_PASSWORD?.trim() || "",
-    apiKey: process.env.ANDREANI_API_KEY?.trim() || "",
-    clientId: process.env.ANDREANI_CLIENT_ID?.trim() || "",
+    cliente: process.env.ANDREANI_CLIENTE?.trim() || "",
+    contrato: process.env.ANDREANI_CONTRATO?.trim() || "",
+    sucursalOrigen: process.env.ANDREANI_SUCURSAL_ORIGEN?.trim() || "",
     originPostalCode: process.env.SHIPPING_ORIGIN_POSTAL_CODE?.trim() || "",
   };
 }

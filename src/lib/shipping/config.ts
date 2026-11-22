@@ -7,8 +7,8 @@ export function hasAndreaniConfig(): boolean {
 
 export function hasCorreoArgentinoConfig(): boolean {
   return !!(
-    process.env.CORREO_ARGENTINO_API_BASE?.trim() &&
-    process.env.CORREO_ARGENTINO_API_KEY?.trim()
+    process.env.CORREO_ARGENTINO_API_KEY?.trim() &&
+    process.env.CORREO_ARGENTINO_AGREEMENT?.trim()
   );
 }
 
@@ -25,8 +25,9 @@ export function getAndreaniConfig() {
 
 export function getCorreoArgentinoConfig() {
   return {
-    base: process.env.CORREO_ARGENTINO_API_BASE?.trim() || "",
+    base: process.env.CORREO_ARGENTINO_API_BASE?.trim() || "https://api.correoargentino.com.ar/paqar/v1",
     apiKey: process.env.CORREO_ARGENTINO_API_KEY?.trim() || "",
+    agreement: process.env.CORREO_ARGENTINO_AGREEMENT?.trim() || "",
     originPostalCode: process.env.SHIPPING_ORIGIN_POSTAL_CODE?.trim() || "",
   };
 }

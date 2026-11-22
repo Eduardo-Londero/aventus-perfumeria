@@ -34,5 +34,8 @@ export interface ShippingProvider {
   isConfigured(): boolean;
   getQuotes(address: ShippingAddress, pkg: PackageInfo): Promise<ShippingQuoteResult>;
   createShipment?(...args: any[]): Promise<{ ok: boolean; message?: string; trackingCode?: string }>;
-  getTracking?(trackingCode: string): Promise<{ ok: boolean; message?: string; status?: string; url?: string }>;
+  cancelShipment?(trackingCode: string): Promise<{ ok: boolean; message?: string }>;
+  generateLabel?(trackingNumbers: string[], format?: string): Promise<{ ok: boolean; message?: string; files?: any[] }>;
+  getBranches?(stateId?: string, pickup?: boolean, reception?: boolean): Promise<{ ok: boolean; message?: string; data?: any }>;
+  getTracking?(trackingCode: string): Promise<{ ok: boolean; message?: string; status?: string; url?: string; data?: any }>;
 }

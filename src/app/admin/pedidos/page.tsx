@@ -604,33 +604,62 @@ export default function AdminPedidosPage() {
                   Tracking
                 </Button>
                 {!selected.shippingTrackingCode && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={async () => {
-                      try {
-                        const res = await fetch("/api/shipping/correo-argentino/create", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ orderNumber: selected.id }),
-                        });
-                        const data = await res.json();
-                        if (!res.ok || !data.ok) {
-                          showToast(data?.message || "No se pudo generar el envío", "error");
-                          return;
+                  <>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch("/api/shipping/correo-argentino/create", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ orderNumber: selected.id }),
+                          });
+                          const data = await res.json();
+                          if (!res.ok || !data.ok) {
+                            showToast(data?.message || "No se pudo generar el envío", "error");
+                            return;
+                          }
+                          showToast(`Envío creado. Tracking: ${data.trackingCode}`, "success");
+                          await load();
+                          const r = await fetch(`/api/admin/orders/${encodeURIComponent(selected.id)}`);
+                          const d = await r.json();
+                          if (d.ok) setSelected(d.order);
+                        } catch {
+                          showToast("Error de red", "error");
                         }
-                        showToast(`Envío creado. Tracking: ${data.trackingCode}`, "success");
-                        await load();
-                        const r = await fetch(`/api/admin/orders/${encodeURIComponent(selected.id)}`);
-                        const d = await r.json();
-                        if (d.ok) setSelected(d.order);
-                      } catch {
-                        showToast("Error de red", "error");
-                      }
-                    }}
-                  >
-                    Generar envío CA
-                  </Button>
+                      }}
+                    >
+                      Generar envío CA
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch("/api/shipping/andreani/create", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ orderNumber: selected.id }),
+                          });
+                          const data = await res.json();
+                          if (!res.ok || !data.ok) {
+                            showToast(data?.message || "No se pudo generar el envío", "error");
+                            return;
+                          }
+                          showToast(`Envío creado. Tracking: ${data.trackingCode}`, "success");
+                          await load();
+                          const r = await fetch(`/api/admin/orders/${encodeURIComponent(selected.id)}`);
+                          const d = await r.json();
+                          if (d.ok) setSelected(d.order);
+                        } catch {
+                          showToast("Error de red", "error");
+                        }
+                      }}
+                    >
+                      Generar envío Andreani
+                    </Button>
+                  </>
                 )}
                 <select
                   className="px-2 py-1 border border-gray-300 rounded text-sm"

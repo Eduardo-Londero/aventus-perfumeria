@@ -58,6 +58,7 @@ export interface OrderFilters {
   paymentStatus?: string;
   shippingStatus?: string;
   fulfillmentStatus?: string;
+  noTracking?: boolean;
   dateFrom?: string;
   dateTo?: string;
   sort?: "created_at" | "total_cents";
@@ -627,6 +628,9 @@ export async function fetchOrders(filters: OrderFilters = {}): Promise<{ orders:
 
   if (filters.paymentStatus) query = query.eq("payment_status", filters.paymentStatus);
   if (filters.shippingStatus) query = query.eq("shipping_status", filters.shippingStatus);
+  if (filters.noTracking) {
+    query = query.is("shipping_tracking_code", null).in("shipping_status", ["despachado", "en_transito"]);
+  }
   if (filters.fulfillmentStatus) query = query.eq("fulfillment_status", filters.fulfillmentStatus);
   if (filters.dateFrom) query = query.gte("created_at", filters.dateFrom);
   if (filters.dateTo) query = query.lte("created_at", filters.dateTo);

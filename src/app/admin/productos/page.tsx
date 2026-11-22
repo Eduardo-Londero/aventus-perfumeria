@@ -198,7 +198,7 @@ export default function AdminProductosPage() {
   // Stats
   const totalProducts = products.length;
   const outOfStock = products.filter((p) => p.stock === 0).length;
-  const lowStock = products.filter((p) => p.stock > 0 && p.stock <= 3).length;
+  const lowStock = products.filter((p) => p.stock > 0 && p.stock <= 5).length;
   const available = products.filter((p) => p.stock > 0).length;
 
   return (

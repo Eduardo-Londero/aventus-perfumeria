@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useToast } from "@/context/ToastContext";
 import { dbProducts } from "@/lib/db";
@@ -74,11 +75,13 @@ export default function AdminPedidosPage() {
   const pageSize = 20;
   const [loading, setLoading] = useState(true);
 
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
   const [shippingFilter, setShippingFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [noTrackingFilter, setNoTrackingFilter] = useState(searchParams.get("noTracking") === "1");
 
   const [summary, setSummary] = useState<Summary | null>(null);
 
@@ -111,6 +114,7 @@ export default function AdminPedidosPage() {
       if (search) params.set("search", search);
       if (paymentFilter) params.set("paymentStatus", paymentFilter);
       if (shippingFilter) params.set("shippingStatus", shippingFilter);
+      if (noTrackingFilter) params.set("noTracking", "1");
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
       params.set("page", String(page));
@@ -145,7 +149,7 @@ export default function AdminPedidosPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, paymentFilter, shippingFilter, dateFrom, dateTo, page, showToast]);
+  }, [search, paymentFilter, shippingFilter, noTrackingFilter, dateFrom, dateTo, page, showToast]);
 
   useEffect(() => {
     load();
@@ -396,6 +400,15 @@ export default function AdminPedidosPage() {
           />
         </div>
       </div>
+
+      {noTrackingFilter && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-center justify-between">
+          <p className="text-sm text-amber-800">Mostrando pedidos despachados sin código de seguimiento.</p>
+          <button onClick={() => setNoTrackingFilter(false)} className="text-sm text-amber-700 hover:text-amber-900 font-medium">
+            Limpiar filtro
+          </button>
+        </div>
+      )}
 
       {/* Tabla */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">

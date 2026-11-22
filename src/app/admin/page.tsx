@@ -317,7 +317,7 @@ export default function AdminDashboard() {
           <KpiCard title="Pend. cobro" value={formatPrice(kpis.pendingCollection)} sub={`${kpis.pendingPayment} pedidos`} />
           <KpiCard title="Pedidos" value={kpis.totalOrders} sub={`${kpis.cancelledOrders} cancelados`} change={kpis.comparison.ordersChange} />
           <KpiCard title="Ticket prom." value={formatPrice(kpis.averageTicket)} change={kpis.comparison.ticketChange} />
-          <KpiCard title="Pend. despacho" value={kpis.pendingDispatch} sub={`${kpis.lowStockProducts} stock bajo`} />
+          <KpiCard title="Pend. despacho" value={kpis.pendingDispatch} sub={`${kpis.lowStockProducts} productos con stock bajo`} />
         </div>
       )}
 
@@ -328,7 +328,7 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
             {alerts.pendingPayment.length > 0 && <AlertLink href="/admin/pedidos" label={`${alerts.pendingPayment.length} pedidos pendientes de pago`} />}
             {alerts.paidNotDispatched.length > 0 && <AlertLink href="/admin/pedidos" label={`${alerts.paidNotDispatched.length} pagados sin despachar`} />}
-            {alerts.noTracking.length > 0 && <AlertLink href="/admin/pedidos" label={`${alerts.noTracking.length} despachados sin tracking`} />}
+            {alerts.noTracking.length > 0 && <AlertLink href="/admin/pedidos?noTracking=1" label={`${alerts.noTracking.length} despachados sin tracking`} />}
             {alerts.shippingProblems.length > 0 && <AlertLink href="/admin/pedidos" label={`${alerts.shippingProblems.length} problemas de envío`} />}
             {alerts.outOfStock.length > 0 && <AlertLink href="/admin/productos" label={`${alerts.outOfStock.length} productos sin stock`} />}
             {alerts.lowStock.length > 0 && <AlertLink href="/admin/productos" label={`${alerts.lowStock.length} productos con stock bajo`} />}

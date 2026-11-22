@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
       paymentStatus: url.searchParams.get("paymentStatus") || undefined,
       shippingStatus: url.searchParams.get("shippingStatus") || undefined,
       fulfillmentStatus: url.searchParams.get("fulfillmentStatus") || undefined,
+      noTracking: url.searchParams.get("noTracking") === "1",
       dateFrom: url.searchParams.get("dateFrom") || undefined,
       dateTo: url.searchParams.get("dateTo") || undefined,
       sort: (url.searchParams.get("sort") as any) || "created_at",

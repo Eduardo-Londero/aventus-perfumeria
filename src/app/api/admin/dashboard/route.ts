@@ -13,6 +13,7 @@ import {
   getWeekday,
   getRecentActivity,
   getAlerts,
+  getProfitability,
 } from "@/lib/server/dashboardService";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,8 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ ok: true, data: await getRecentActivity(20) });
       case "alerts":
         return NextResponse.json({ ok: true, ...(await getAlerts()) });
+      case "profitability":
+        return NextResponse.json({ ok: true, ...(await getProfitability(from, to)) });
       default:
         return NextResponse.json({ ok: false, code: "INVALID", message: "Sección desconocida." }, { status: 400 });
     }

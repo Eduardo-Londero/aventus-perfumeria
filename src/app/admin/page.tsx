@@ -172,6 +172,16 @@ interface Alerts {
   outOfStock: any[];
 }
 
+interface Profitability {
+  revenue: number;
+  cost: number;
+  grossProfit: number;
+  margin: number;
+  hasCostData: boolean;
+  ordersWithCost: number;
+  ordersWithoutCost: number;
+}
+
 export default function AdminDashboard() {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -193,6 +203,7 @@ export default function AdminDashboard() {
   const [weekday, setWeekday] = useState<WeekdayRow[]>([]);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [alerts, setAlerts] = useState<Alerts | null>(null);
+  const [profitability, setProfitability] = useState<Profitability | null>(null);
   const [loading, setLoading] = useState(true);
 
   const range = useMemo(() => computeRange(preset, customFrom, customTo), [preset, customFrom, customTo]);
@@ -201,7 +212,7 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const qs = (extra = "") => `/api/admin/dashboard?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}${extra}`;
-      const [k, s, p, pay, wd, act, al] = await Promise.all([
+      const [k, s, p, pay, wd, act, al, prof] = await Promise.all([
         fetch(qs()).then((r) => r.json()),
         fetch(qs(`&granularity=${granularity}`) + "&section=series").then((r) => r.json()),
         fetch(`/api/admin/dashboard?section=products&from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`).then((r) => r.json()),
@@ -209,6 +220,7 @@ export default function AdminDashboard() {
         fetch(`/api/admin/dashboard?section=weekday&from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`).then((r) => r.json()),
         fetch(`/api/admin/dashboard?section=activity`).then((r) => r.json()),
         fetch(`/api/admin/dashboard?section=alerts`).then((r) => r.json()),
+        fetch(`/api/admin/dashboard?section=profitability&from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`).then((r) => r.json()),
       ]);
       if (k.ok) setKpis(k);
       if (s.ok) setSeries(s.data);
@@ -217,6 +229,7 @@ export default function AdminDashboard() {
       if (wd.ok) setWeekday(wd.data);
       if (act.ok) setActivity(act.data);
       if (al.ok) setAlerts(al);
+      if (prof.ok) setProfitability(prof);
 
       // monthly
       const mRes = await fetch(`/api/admin/dashboard?section=monthly&year=${year}`);
@@ -509,12 +522,45 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* Rentabilidad (preparada) */}
+      {/* Rentabilidad */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Rentabilidad (preparado)</h3>
-        <p className="text-sm text-gray-500">
-          Los costos de adquisición aún no están registrados en el catálogo (columna <code>cost_cents</code> agregada en la migración 0010). Cuando cargues los costos de los productos, acá se calculará facturación, costo de mercadería vendida, ganancia bruta y margen. No se inventan valores.
-        </p>
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Rentabilidad</h3>
+        {!profitability ? (
+          <p className="text-sm text-gray-500">Cargando...</p>
+        ) : !profitability.hasCostData ? (
+          <p className="text-sm text-gray-500">
+            No hay costos de adquisición registrados en los productos (columna <code>cost_cents</code>). Cargá los costos en el catálogo para calcular facturación, costo de mercadería vendida, ganancia bruta y margen. No se inventan valores.
+          </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <p className="text-xs text-gray-500">Facturación</p>
+                <p className="text-xl font-bold text-gray-900">{formatPrice(profitability.revenue)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Costo mercadería</p>
+                <p className="text-xl font-bold text-gray-900">{formatPrice(profitability.cost)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Ganancia bruta</p>
+                <p className={`text-xl font-bold ${profitability.grossProfit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {formatPrice(profitability.grossProfit)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Margen</p>
+                <p className={`text-xl font-bold ${profitability.margin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {profitability.margin.toFixed(1)}%
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">
+              Basado en {profitability.ordersWithCost} pedido(s) con costo registrado
+              {profitability.ordersWithoutCost > 0 ? ` · ${profitability.ordersWithoutCost} sin costo (excluidos)` : ""}.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

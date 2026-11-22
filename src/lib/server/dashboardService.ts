@@ -381,3 +381,57 @@ export async function getAlerts(): Promise<{
 
   return { pendingPayment, paidNotDispatched, noTracking, shippingProblems, lowStock, outOfStock };
 }
+
+export interface Profitability {
+  revenue: number; // pesos
+  cost: number; // pesos
+  grossProfit: number; // pesos
+  margin: number; // %
+  hasCostData: boolean;
+  ordersWithCost: number;
+  ordersWithoutCost: number;
+}
+
+export async function getProfitability(from: string, to: string): Promise<Profitability> {
+  const orders = await fetchOrdersInRange(from, to);
+  const valid = orders.filter((o) => o.fulfillment_status !== "cancelled");
+
+  let revenue = 0;
+  let cost = 0;
+  let hasCostData = false;
+  let ordersWithCost = 0;
+  let ordersWithoutCost = 0;
+
+  for (const o of valid) {
+    revenue += o.total_cents ?? 0;
+    let orderHasCost = true;
+    let orderCost = 0;
+    for (const it of o.order_items ?? []) {
+      if (it.cost_cents == null) {
+        orderHasCost = false;
+      } else {
+        hasCostData = true;
+        orderCost += (it.cost_cents ?? 0) * (it.quantity ?? 0);
+      }
+    }
+    if (orderHasCost && (o.order_items ?? []).length > 0) {
+      cost += orderCost;
+      ordersWithCost += 1;
+    } else {
+      ordersWithoutCost += 1;
+    }
+  }
+
+  const grossProfit = revenue - cost;
+  const margin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+
+  return {
+    revenue: centsToPesos(revenue),
+    cost: centsToPesos(cost),
+    grossProfit: centsToPesos(grossProfit),
+    margin,
+    hasCostData,
+    ordersWithCost,
+    ordersWithoutCost,
+  };
+}

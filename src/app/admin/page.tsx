@@ -353,7 +353,7 @@ export default function AdminDashboard() {
         </div>
         {series.length === 0 ? (
           <p className="text-sm text-gray-500 text-center py-8">Sin datos en el período.</p>
-        ) : (
+        ) : chartType === "bar" ? (
           <div className="overflow-x-auto">
             <div className="flex items-end gap-1 h-48 min-w-[300px]">
               {series.map((s, i) => (
@@ -366,6 +366,70 @@ export default function AdminDashboard() {
                   <span className="text-[9px] text-gray-400 mt-1 truncate w-full text-center">{s.key.slice(-5)}</span>
                 </div>
               ))}
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <svg
+              viewBox="0 0 100 40"
+              preserveAspectRatio="none"
+              className="w-full h-48 min-w-[300px]"
+              role="img"
+              aria-label="Evolución de ventas"
+            >
+              {/* Línea período anterior (gris, discontinua) */}
+              <polyline
+                fill="none"
+                stroke="#d1d5db"
+                strokeWidth="0.8"
+                strokeDasharray="2,2"
+                points={series
+                  .map((s, i) => {
+                    const x = series.length > 1 ? (i / (series.length - 1)) * 100 : 50;
+                    const y = 40 - (s.prevRevenue / maxSeries) * 40;
+                    return `${x},${Math.max(0, Math.min(40, y))}`;
+                  })
+                  .join(" ")}
+              />
+              {/* Línea período actual (dorada) */}
+              <polyline
+                fill="none"
+                stroke="#b8956a"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                points={series
+                  .map((s, i) => {
+                    const x = series.length > 1 ? (i / (series.length - 1)) * 100 : 50;
+                    const y = 40 - (s.revenue / maxSeries) * 40;
+                    return `${x},${Math.max(0, Math.min(40, y))}`;
+                  })
+                  .join(" ")}
+              />
+              {series.map((s, i) => {
+                const x = series.length > 1 ? (i / (series.length - 1)) * 100 : 50;
+                const y = 40 - (s.revenue / maxSeries) * 40;
+                return (
+                  <circle
+                    key={i}
+                    cx={x}
+                    cy={Math.max(0, Math.min(40, y))}
+                    r="1"
+                    fill="#b8956a"
+                  >
+                    <title>{`${s.key}: ${formatPrice(s.revenue)} · ${s.orders} pedido(s)`}</title>
+                  </circle>
+                );
+              })}
+            </svg>
+            <div className="flex justify-between text-[9px] text-gray-400 mt-1">
+              {series.length > 0 && (
+                <>
+                  <span>{series[0].key.slice(-5)}</span>
+                  {series.length > 2 && <span>{series[Math.floor(series.length / 2)].key.slice(-5)}</span>}
+                  <span>{series[series.length - 1].key.slice(-5)}</span>
+                </>
+              )}
             </div>
           </div>
         )}
